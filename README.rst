@@ -1,9 +1,30 @@
-# Medusa
-Analysis of ensembles of metabolic network reconstructions
+Medusa - Analysis of ensembles of metabolic network reconstructions
+===================================================================
+
+|PyPI|
 
 Medusa is a tool for constraint-based reconstruction and analysis (COBRA) of ensembles. It builds on the cobrapy package (https://github.com/opencobra/cobrapy) by extending most single-model functionality to efficient ensemble-scale analysis. Additionally, Medusa provides novel functions for the analysis of ensembles.
 
 Medusa is developed openly. We are currently porting code from previous/in-progress projects to generalize beyond the specific use cases that project code was originally developed for. Development plans can be found in the root of the repository in "version_release_plan.txt".
+
+
+Installation
+~~~~~~~~~~~~
+
+Use pip to install medusa from PyPI:
+
+    pip install medusa-cobra
+
+
+Getting Started
+~~~~~~~~~~~~~~~
+
+Medusa can be loaded with:
+
+    import medusa
+
+
+
 
 For reading on ensembles in metabolic modeling and systems biology, see:
 
