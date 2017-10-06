@@ -11,7 +11,7 @@ Installation
 
 Use pip to install medusa from PyPI::
 
-pip install medusa-cobra
+    pip install medusa-cobra
 
 
 Getting Started
@@ -19,7 +19,7 @@ Getting Started
 
 Medusa can be loaded in python with::
 
-import medusa
+    import medusa
 
 
 
