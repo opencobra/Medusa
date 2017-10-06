@@ -3,7 +3,7 @@ import cobra
 import random
 import pandas as pd
 
-class Ensemble_model:
+class Ensemble:
     """
     Ensemble of metabolic models. Contains a base_model of type
     cobra.core.Model which consists of all reactions and genes

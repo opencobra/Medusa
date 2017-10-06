@@ -2,3 +2,6 @@
 
 # Distribution/packaging
 dist/
+
+# compiled python files
+*.pyc
