@@ -1,4 +1,7 @@
 # ensemble_model class
+
+from __future__ import absolute_import
+
 import cobra
 import random
 import pandas as pd
@@ -218,43 +221,6 @@ class Ensemble:
                     reaction_diffs[model.id][reaction] = {'lb':0.0,'ub':0.0}
         return reaction_diffs
 
-    def ensemble_fva(self, reaction_list, num_models=[],fraction_of_optimum=1.0, loopless=False,
-                     solver=None, **solver_args):
-        '''
-        Performs FVA on num_models. If num_models is not passed, performs FVA
-        on every model in the ensemble. If the model is a community model,
-        num_models must be passed.
-        '''
-        if not num_models:
-            # if not specified, use all models
-            num_models = len(self.reaction_diffs.keys())
-
-        # initialize dataframe to store results. max and min for each model will
-        # each take a single row, and the columns will be reactions.
-        all_fva_results = pd.DataFrame()
-        # keep track of the model count for recording max/min
-        model_count = 0
-        for model in random.sample(list(self.reaction_diffs.keys()),num_models):
-            diffs = self.reaction_diffs[model]
-            for reaction in diffs.keys():
-                rxn = self.base_model.reactions.get_by_id(reaction)
-                rxn.lower_bound = self.reaction_diffs[model][reaction]['lb']
-                rxn.upper_bound = self.reaction_diffs[model][reaction]['ub']
-            fva_result = cobra.flux_analysis.flux_variability_analysis(
-                    self.base_model,reaction_list=reaction_list,
-                    fraction_of_optimum=fraction_of_optimum,
-                    loopless=loopless,
-                    solver=solver, **solver_args)
-            fva_result.columns = ['maximum_'+model,
-                                    'minimum_'+model]
-            fva_result = fva_result.T
-            # add the model source as a column
-            fva_result['model_source'] = [model,model]
-            all_fva_results = all_fva_results.append(fva_result)
-            model_count+=1
-        return all_fva_results
-
-
     def ensemble_single_reaction_deletion(self,optimal_only=True,num_models=[]):
         '''
         IN PROGRESS, not functional
@@ -332,31 +298,3 @@ class Ensemble:
         self.base_model.objective = old_objective
 
         return leaks
-
-    def optimize_ensemble(self,return_flux=[],num_models=[],**kwargs):
-        '''
-        return_flux option specifies the reactions for which flux values should
-        be returned. If empty, returns flux through every reaction.
-        '''
-
-        if not num_models:
-            # num_models currently only works for single-species models
-            # since co-cultures use a deeper reaction diff.
-            num_models = len(self.reaction_diffs.keys())
-
-        flux_dict = {}
-        return_vals = {}
-        for model in random.sample(list(self.reaction_diffs.keys()),num_models):
-            diffs = self.reaction_diffs[model]
-            for reaction in diffs.keys():
-                rxn = self.base_model.reactions.get_by_id(reaction)
-                rxn.lower_bound = self.reaction_diffs[model][reaction]['lb']
-                rxn.upper_bound = self.reaction_diffs[model][reaction]['ub']
-            self.base_model.optimize(**kwargs)
-            flux_dict[model] = {rxn.id:rxn.flux for rxn in self.base_model.reactions}
-        if return_flux:
-            for model in flux_dict.keys():
-                return_vals[model] = {rxn_id:flux_dict[model][rxn_id] for rxn_id in return_flux}
-        else:
-            return_vals = flux_dict
-        return return_vals
