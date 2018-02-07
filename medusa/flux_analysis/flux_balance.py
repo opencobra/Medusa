@@ -48,15 +48,15 @@ def optimize_ensemble(ensemble,return_flux=None,num_models=None,specific_models=
         model_list = specific_models
     else:
         model_list = sample(list(ensemble.reaction_diffs.keys()),num_models)
-        
-    for model in model_list:
-        diffs = ensemble.reaction_diffs[model]
-        for reaction in diffs.keys():
-            rxn = ensemble.base_model.reactions.get_by_id(reaction)
-            rxn.lower_bound = ensemble.reaction_diffs[model][reaction]['lb']
-            rxn.upper_bound = ensemble.reaction_diffs[model][reaction]['ub']
-        ensemble.base_model.optimize(**kwargs)
-        flux_dict[model] = {rxn.id:rxn.flux for rxn in ensemble.base_model.reactions}
+    with ensemble.base_model:
+        for model in model_list:
+            diffs = ensemble.reaction_diffs[model]
+            for reaction in diffs.keys():
+                rxn = ensemble.base_model.reactions.get_by_id(reaction)
+                rxn.lower_bound = ensemble.reaction_diffs[model][reaction]['lb']
+                rxn.upper_bound = ensemble.reaction_diffs[model][reaction]['ub']
+            ensemble.base_model.optimize(**kwargs)
+            flux_dict[model] = {rxn.id:rxn.flux for rxn in ensemble.base_model.reactions}
     if return_flux:
         for model in flux_dict.keys():
             return_vals[model] = {rxn_id:flux_dict[model][rxn_id] for rxn_id in return_flux}
