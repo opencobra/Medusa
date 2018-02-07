@@ -1,4 +1,7 @@
 # ensemble_model class
+
+from __future__ import absolute_import
+
 import cobra
 import random
 import pandas as pd
@@ -332,31 +335,3 @@ class Ensemble:
         self.base_model.objective = old_objective
 
         return leaks
-
-    def optimize_ensemble(self,return_flux=[],num_models=[],**kwargs):
-        '''
-        return_flux option specifies the reactions for which flux values should
-        be returned. If empty, returns flux through every reaction.
-        '''
-
-        if not num_models:
-            # num_models currently only works for single-species models
-            # since co-cultures use a deeper reaction diff.
-            num_models = len(self.reaction_diffs.keys())
-
-        flux_dict = {}
-        return_vals = {}
-        for model in random.sample(list(self.reaction_diffs.keys()),num_models):
-            diffs = self.reaction_diffs[model]
-            for reaction in diffs.keys():
-                rxn = self.base_model.reactions.get_by_id(reaction)
-                rxn.lower_bound = self.reaction_diffs[model][reaction]['lb']
-                rxn.upper_bound = self.reaction_diffs[model][reaction]['ub']
-            self.base_model.optimize(**kwargs)
-            flux_dict[model] = {rxn.id:rxn.flux for rxn in self.base_model.reactions}
-        if return_flux:
-            for model in flux_dict.keys():
-                return_vals[model] = {rxn_id:flux_dict[model][rxn_id] for rxn_id in return_flux}
-        else:
-            return_vals = flux_dict
-        return return_vals
