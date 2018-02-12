@@ -19,18 +19,52 @@ class Ensemble:
     base_model: Cobra.core.Model object.
     """
 
-    def __init__(self,model_list=None,base_id=None):
+    def __init__(self,base_id,model_list=None,join_method="concurrent",join_size=1):
         """
         model_list: list of models to merge into a base model.
         base_id: id that will be used for the new base_model.
+
+        Parameters
+        ----------
+        model_list: list of cobra.core.Model objects
+            List of models to generate a single Ensemble object from.
+        base_id: string
+            identifier which will be assigned as the Ensemble's id.
+        join_method: string
+            Indicates the method used to construct the ensemble from model_list.
+            Can be either "concurrent" or "iterative". Choose "concurrent" if
+            the number of models is sufficiently small such that they can all be
+            loaded into memory at the same time (not recommended for more than
+            dozens of models with ~1000 reactions each). Otherwise, "iterative"
+            will only load one model in memory at any given time; slower than
+            "concurrent", but more memory efficient (required for large groups
+            of large models).
+        join_size: int
+            Number of models to add to the ensemble during each iteration. Can
+            only be used if join_method="iterative". Higher values consume more
+            memory but should run more quickly. Default value is 1.
         """
 
-        if model_list:
-            self.base_model = self._create_base_model(model_list,base_id=base_id+'_base_model')
-            self.reaction_diffs = self._create_reaction_diffs(model_list)
-        else:
+        if join_method not in ["concurrent","iterative"]:
+            raise ValueError("join_method must be either 'concurrent' or 'iterative'")
+
+        if not model_list:
             self.base_model = cobra.core.Model(base_id+'_base_model')
             self.reaction_diffs = {}
+        else:
+            if join_method == "concurrent":
+                self.base_model = self._create_base_model(model_list,base_id=base_id+'_base_model')
+                self.reaction_diffs = self._create_reaction_diffs(model_list)
+            elif join_method == "iterative":
+                self.base_model = cobra.core.Model(base_id+'_base_model')
+                self.reaction_diffs = {}
+                remainder = len(model_list) % join_size
+                steps = int(len(model_list)/join_size)
+                for i in range(steps):
+                    model_group = model_list[(i)*join_size:i+1*join_size]
+                    self.add_models(model_group)
+                if remainder > 0:
+                    self.add_models(model_list[-1*remainder:])
         self.id=base_id
 
 
