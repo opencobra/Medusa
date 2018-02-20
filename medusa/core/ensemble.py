@@ -88,7 +88,7 @@ class Ensemble:
         code a little cleaner for the user.
         '''
 
-        if len(self.reaction_diffs.keys) < 1:
+        if len(self.reaction_diffs.keys()) < 1:
             # If empty, just generate new base and diffs from input models
             new_base_model = self._create_base_model(model_list=model_list)
             new_reaction_diffs = self._create_reaction_diffs(model_list=model_list)
