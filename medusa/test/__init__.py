@@ -1,15 +1,18 @@
 from __future__ import absolute_import
 
 import cobra
-import medusa
 import json
+
+from medusa.core.ensemble import Ensemble
+from medusa.reconstruct.degrade import degrade_reactions
+
 
 from os.path import abspath, dirname, join
 
 medusa_directory = abspath(join(dirname(abspath(__file__)), ".."))
 data_dir = join(medusa_directory,"test","data","")
 
-def create_test_model(model_name="salmonella"):
+def create_test_model(model_name="textbook"):
     """Returns an ensemble of models for testing
     model_name: str
         One of 'ASF356' or 'ASF519'
@@ -23,6 +26,11 @@ def create_test_model(model_name="salmonella"):
         base_model = cobra.io.load_json_model(join(data_dir, 'ASF519_base_model.json'))
         with open(join(data_dir, 'ASF519_base_model_reaction_diffs.json'),'r') as infile:
             reaction_diffs = json.load(infile)
+
+    else:
+        base_model = cobra.create_test_model(model_name)
+
+
 
     test_model = medusa.Ensemble(base_id=base_model.id)
     test_model.base_model = base_model
