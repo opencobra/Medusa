@@ -87,98 +87,104 @@ class Ensemble:
         refactor to enable starting with an empty model, since this makes
         code a little cleaner for the user.
         '''
-        new_base_model = self._create_base_model(model_list=model_list)
-        new_reaction_diffs = self._create_reaction_diffs(model_list=model_list)
 
-        old_base_rxns = [rxn.id for rxn in self.base_model.reactions]
-        new_base_rxns = [rxn.id for rxn in new_base_model.reactions]
-        # currently grabs the reaction list from the first model. Requires update
-        # if reaction_diff is refactored.
-        if len(self.reaction_diffs.keys()) > 0: # check if the ensemble was empty
-            old_diff_rxns = [rxn for rxn in self.reaction_diffs[list(self.reaction_diffs.keys())[0]]]
+        if len(self.reaction_diffs.keys()) < 1:
+            # If empty, just generate new base and diffs from input models
+            new_base_model = self._create_base_model(model_list=model_list)
+            new_reaction_diffs = self._create_reaction_diffs(model_list=model_list)
+            self.base_model = new_base_model
+            self.reaction_diffs = new_reaction_diffs
         else:
-            old_diff_rxns = []
-        new_diff_rxns = [rxn for rxn in new_reaction_diffs[list(new_reaction_diffs.keys())[0]]]
+            new_base_model = self._create_base_model(model_list=model_list)
+            new_reaction_diffs = self._create_reaction_diffs(model_list=model_list)
 
-        # find reactions in the new base that aren't in the old_base
-        new_base_notin_old_base = list(set(new_base_rxns) - set(old_base_rxns))
-        # find reactions in the old base that aren't in the new base
-        old_base_notin_new_base = list(set(old_base_rxns) - set(new_base_rxns))
-        # find reactions present in both new and old bases.
-        in_both_bases = list(set(old_base_rxns) & set(new_base_rxns))
+            old_base_rxns = [rxn.id for rxn in self.base_model.reactions]
+            new_base_rxns = [rxn.id for rxn in new_base_model.reactions]
+            # currently grabs the reaction list from the first model. Requires update
+            # if reaction_diff is refactored.
+            old_diff_rxns = [rxn for rxn in self.reaction_diffs[list(self.reaction_diffs.keys())[0]]]
+            new_diff_rxns = [rxn for rxn in new_reaction_diffs[list(new_reaction_diffs.keys())[0]]]
 
-        rxns_to_add_to_old_base = []
-        for reaction in new_base_notin_old_base:
-            rxns_to_add_to_old_base.append(new_base_model.reactions.get_by_id(reaction))
-            for model in self.reaction_diffs.keys():
-                # close the reaction in the old reaction diffs
-                self.reaction_diffs[model][reaction] = {'lb':0.0,'ub':0.0}
-            if reaction not in new_diff_rxns:
-                # if the reaction wasn't in the new_diffs, we need to add it with
-                # the bounds from the new base since the reaction is absent from the old models
-                lb_in_new_base = new_base_model.reactions.get_by_id(reaction).lower_bound
-                ub_in_new_base = new_base_model.reactions.get_by_id(reaction).upper_bound
-                for model in new_reaction_diffs.keys():
-                    new_reaction_diffs[model][reaction] = \
-                        {'lb':lb_in_new_base,'ub':ub_in_new_base}
+            # find reactions in the new base that aren't in the old_base
+            new_base_notin_old_base = list(set(new_base_rxns) - set(old_base_rxns)) # these should be in new diff
+            # find reactions in the old base that aren't in the new base
+            old_base_notin_new_base = list(set(old_base_rxns) - set(new_base_rxns)) # these should be in new diff
+            # find reactions present in both new and old bases.
+            in_both_bases = list(set(old_base_rxns) & set(new_base_rxns)) # these are the new universal reactions (if they have the same bounds)
 
-        for reaction in old_base_notin_new_base:
-            if reaction not in old_diff_rxns:
-                # if the reaction isn't in the old diff, we need to add it with
-                # the bounds from old_reaction_diff since it isn't in the new base.
-                # (e.g. the reaction is now different in some models)
-                lb_in_old_base = self.base_model.reactions.get_by_id(reaction).lower_bound
-                ub_in_old_base = self.base_model.reactions.get_by_id(reaction).upper_bound
+            rxns_to_add_to_old_base = []
+            for reaction in new_base_notin_old_base:
+                rxns_to_add_to_old_base.append(new_base_model.reactions.get_by_id(reaction))
                 for model in self.reaction_diffs.keys():
-                    self.reaction_diffs[model][reaction] = \
-                        {'lb':lb_in_old_base,'ub':ub_in_old_base}
-                # add the reaction to the new diffs, with it closed since it
-                # wasn't in the new base.
-                for model in new_reaction_diffs.keys():
-                    new_reaction_diffs[model][reaction] = {'lb':0.0,'ub':0.0}
-            else:
-                #if the reaction was in the old_diff, we must add it to new_diff since it's
-                # variable in a set of models
-                if not reaction in new_diff_rxns: # this should always be true since these reactions aren't in the new base, but just in case.
-                    for model in new_reaction_diffs.keys():
-                        new_reaction_diffs[model][reaction] = {'lb':0.0,'ub':0.0}
-
-        for reaction in in_both_bases:
-            if reaction in old_diff_rxns:
+                    # close the reaction in the old reaction diffs
+                    self.reaction_diffs[model][reaction] = {'lb':0.0,'ub':0.0}
                 if reaction not in new_diff_rxns:
-                    # add to new diff with bounds from new_base
+                    # if the reaction wasn't in the new_diffs, we need to add it with
+                    # the bounds from the new base since the reaction is absent from the old models
                     lb_in_new_base = new_base_model.reactions.get_by_id(reaction).lower_bound
                     ub_in_new_base = new_base_model.reactions.get_by_id(reaction).upper_bound
                     for model in new_reaction_diffs.keys():
                         new_reaction_diffs[model][reaction] = \
                             {'lb':lb_in_new_base,'ub':ub_in_new_base}
-            if reaction in new_diff_rxns:
+
+            for reaction in old_base_notin_new_base:
                 if reaction not in old_diff_rxns:
-                    # add to old diff with bound from old_base
+                    # if the reaction isn't in the old diff but isn't in the new base,
+                    # we need to add it to the diff with
+                    # the bounds from old_reaction_diff since it isn't in the new base.
+                    # (e.g. the reaction is now different in some models)
                     lb_in_old_base = self.base_model.reactions.get_by_id(reaction).lower_bound
                     ub_in_old_base = self.base_model.reactions.get_by_id(reaction).upper_bound
                     for model in self.reaction_diffs.keys():
                         self.reaction_diffs[model][reaction] = \
                             {'lb':lb_in_old_base,'ub':ub_in_old_base}
-            else:
-                # if the reaction is in neither diff, check whether the bounds
-                # are the same in both old and new base, then update diffs
-                lb_in_new_base = new_base_model.reactions.get_by_id(reaction).lower_bound
-                ub_in_new_base = new_base_model.reactions.get_by_id(reaction).upper_bound
-                lb_in_old_base = self.base_model.reactions.get_by_id(reaction).lower_bound
-                ub_in_old_base = self.base_model.reactions.get_by_id(reaction).upper_bound
-                if lb_in_new_base != lb_in_old_base or ub_in_new_base != ub_in_old_base:
-                    for model in self.reaction_diffs.keys():
-                        self.reaction_diffs[model][reaction] = \
-                            {'lb':lb_in_old_base,'ub':ub_in_old_base}
+                    # add the reaction to the new diffs, with it closed since it
+                    # wasn't in the new base.
                     for model in new_reaction_diffs.keys():
-                        new_reaction_diffs[model][reaction] = \
-                            {'lb':lb_in_new_base,'ub':ub_in_new_base}
-        # update the base_model and reaction_diff
-        self.base_model.add_reactions(rxns_to_add_to_old_base)
-        self.base_model.repair()
-        for model in new_reaction_diffs.keys():
-            self.reaction_diffs[model] = new_reaction_diffs[model]
+                        new_reaction_diffs[model][reaction] = {'lb':0.0,'ub':0.0}
+                else:
+                    #if the reaction was in the old_diff, we must add it to new_diff since it's
+                    # variable in a set of models
+                    if not reaction in new_diff_rxns: # this should always be true since these reactions aren't in the new base, but just in case.
+                        for model in new_reaction_diffs.keys():
+                            new_reaction_diffs[model][reaction] = {'lb':0.0,'ub':0.0}
+
+            for reaction in in_both_bases:
+                if reaction in old_diff_rxns:
+                    if reaction not in new_diff_rxns:
+                        # add to new diff with bounds from new_base
+                        lb_in_new_base = new_base_model.reactions.get_by_id(reaction).lower_bound
+                        ub_in_new_base = new_base_model.reactions.get_by_id(reaction).upper_bound
+                        for model in new_reaction_diffs.keys():
+                            new_reaction_diffs[model][reaction] = \
+                                {'lb':lb_in_new_base,'ub':ub_in_new_base}
+                if reaction in new_diff_rxns:
+                    if reaction not in old_diff_rxns:
+                        # add to old diff with bound from old_base
+                        lb_in_old_base = self.base_model.reactions.get_by_id(reaction).lower_bound
+                        ub_in_old_base = self.base_model.reactions.get_by_id(reaction).upper_bound
+                        for model in self.reaction_diffs.keys():
+                            self.reaction_diffs[model][reaction] = \
+                                {'lb':lb_in_old_base,'ub':ub_in_old_base}
+                else:
+                    # if the reaction is in neither diff, check whether the bounds
+                    # are the same in both old and new base, then update diffs
+                    lb_in_new_base = new_base_model.reactions.get_by_id(reaction).lower_bound
+                    ub_in_new_base = new_base_model.reactions.get_by_id(reaction).upper_bound
+                    lb_in_old_base = self.base_model.reactions.get_by_id(reaction).lower_bound
+                    ub_in_old_base = self.base_model.reactions.get_by_id(reaction).upper_bound
+                    if lb_in_new_base != lb_in_old_base or ub_in_new_base != ub_in_old_base:
+                        for model in self.reaction_diffs.keys():
+                            self.reaction_diffs[model][reaction] = \
+                                {'lb':lb_in_old_base,'ub':ub_in_old_base}
+                        for model in new_reaction_diffs.keys():
+                            new_reaction_diffs[model][reaction] = \
+                                {'lb':lb_in_new_base,'ub':ub_in_new_base}
+            # update the base_model and reaction_diff
+            self.base_model.add_reactions(rxns_to_add_to_old_base)
+            self.base_model.repair()
+            for model in new_reaction_diffs.keys():
+                self.reaction_diffs[model] = new_reaction_diffs[model]
 
     def _apply_diffs(self,model_name):
         '''
