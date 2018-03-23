@@ -4,7 +4,6 @@ import cobra
 import json
 
 from medusa.core.ensemble import Ensemble
-from medusa.reconstruct.degrade import degrade_reactions
 
 
 from os.path import abspath, dirname, join
