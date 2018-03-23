@@ -1,5 +1,6 @@
 from cobra.test import create_test_model
 from medusa.core.ensemble import Ensemble
+from medusa.core.ensemble import update_features_states
 
 
 def test_concurrent_join():
@@ -18,10 +19,10 @@ def test_concurrent_join():
                                         base_id='textbook_ensemble')
     # are there three members in the ensemble?
     num_models = 3
-    assert len(textbook_ensemble.reaction_diffs.keys()) == num_models
+    assert len(textbook_ensemble.features.index) == num_models
     # are there 5 reactions in the reaction diff for each model?
-    for model in textbook_ensemble.reaction_diffs.keys():
-        assert len(textbook_ensemble.reaction_diffs[model]) == 5
+    for model in textbook_ensemble.features.index.tolist():
+        assert len(textbook_ensemble.states.loc[model]) == 5
 
 def test_iterative_join():
     model1 = create_test_model("textbook")
@@ -38,10 +39,10 @@ def test_iterative_join():
                                 join_method='iterative')
     # are there three members in the ensemble?
     num_models = 3
-    assert len(textbook_ensemble.reaction_diffs.keys()) == num_models
+    assert len(textbook_ensemble.features.index) == num_models
     # are there 5 reactions in the reaction diff for each model?
-    for model in textbook_ensemble.reaction_diffs.keys():
-        assert len(textbook_ensemble.reaction_diffs[model]) == 5
+    for model in textbook_ensemble.features.index.tolist():
+        assert len(textbook_ensemble.states.loc[model]) == 5
 
 def test_iterative_join_size():
     model1 = create_test_model("textbook")
@@ -59,10 +60,10 @@ def test_iterative_join_size():
 
     # are there three members in the ensemble?
     num_models = 3
-    assert len(textbook_ensemble.reaction_diffs.keys()) == num_models
+    assert len(textbook_ensemble.features.index) == num_models
     # are there 5 reactions in the reaction diff for each model?
-    for model in textbook_ensemble.reaction_diffs.keys():
-        assert len(textbook_ensemble.reaction_diffs[model]) == 5
+    for model in textbook_ensemble.features.index.tolist():
+        assert len(textbook_ensemble.states.loc[model]) == 5
 
 
 def test_empty_join():
@@ -81,7 +82,7 @@ def test_empty_join():
     textbook_ensemble = Ensemble(model_list=[model1,model2,model3],
                                         base_id='textbook_ensemble')
     from_empty = Ensemble(base_id='ensemble_from_empty')
-    from_empty.add_models([model1,model2,model3])
+    update_features_states(from_empty,model_list=[model1,model2,model3])
 
     # are there three members in the ensemble?
     assert len(textbook_ensemble.reaction_diffs.keys()) == \
