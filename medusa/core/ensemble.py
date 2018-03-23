@@ -281,7 +281,7 @@ def set_features_states(ensemble,model_list):
     """
 
     # if the model list is of length 1, there aren't any variable reactions.
-    if len(model_list == 1):
+    if len(model_list) == 1:
         ensemble.features = pd.DataFrame()
         ensemble.states = pd.DataFrame()
     else:
