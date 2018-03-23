@@ -61,7 +61,7 @@ class Ensemble:
                 set_features_states(self,model_list[0:join_size])
                 remainder = len(model_list) % join_size
                 steps = int(len(model_list)/join_size)
-                for i in range(steps-1):
+                for i in range(steps):
                     model_group = model_list[(i+1)*join_size:i+2*join_size]
                     #self.add_models(model_group)
                     update_features_states(self,model_group)
