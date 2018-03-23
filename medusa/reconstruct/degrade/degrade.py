@@ -29,5 +29,3 @@ def degrade_reactions(base_model,num_reactions,num_models=10):
     Medusa.core.ensemble
         An ensemble
     """
-
-    
