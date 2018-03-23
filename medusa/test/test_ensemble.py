@@ -90,3 +90,6 @@ def test_empty_join():
     # are there the same number of reactions in the states and features?
     assert len(textbook_ensemble.states.columns) == len(from_empty.states.columns)
     assert len(textbook_ensemble.features.index) == len(from_empty.features.index)
+
+#def test_from_json():
+    # test functions to load an ensemble from JSON files.

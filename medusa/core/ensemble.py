@@ -279,34 +279,41 @@ def set_features_states(ensemble,model_list):
     model_list: list of cobra.core.Model objects
         List of models to generate a single Ensemble object from.
     """
-    # Get list of every reaction present in all models
-    reaction_set = set()
-    for model in model_list:
-        model_reactions = set([reaction.id for reaction in model.reactions])
-        if len(reaction_set) > 0:
-            reaction_set = reaction_set & model_reactions
-        else:
-            reaction_set = model_reactions
-    reaction_list = list(reaction_set)
 
-    for model in model_list:
-        variable_reactions = {}
-        reactions_different = [rxn for rxn in model.reactions if rxn.id not in reaction_list]
-        for reaction in reactions_different:
-            if not reaction.id in variable_reactions.keys():
-                variable_reactions[reaction.id] = {'lb':model.reactions.get_by_id(reaction.id).lower_bound,\
-                                                    'ub':model.reactions.get_by_id(reaction.id).upper_bound}
-        model_states = pd.DataFrame({feature:True for feature in variable_reactions.keys()},index=[model.id])
-        features = pd.DataFrame(variable_reactions).T
-        if len(ensemble.features) > 0:
-            new_df = pd.concat([ensemble.features,features])
-            ensemble.features = new_df[~new_df.index.duplicated(keep='first')]
-            new_df = pd.concat([ensemble.states,model_states])
-            ensemble.states = new_df.fillna(False)
-        else:
-            ensemble.features = ensemble.features.join(features,how='outer')
-        #self.features = self.features.join(features,how='outer')
-            ensemble.states = ensemble.states.join(model_states,how='outer')
+    # if the model list is of length 1, there aren't any variable reactions.
+    if len(model_list == 1):
+        ensemble.features = pd.DataFrame()
+        ensemble.states = pd.DataFrame()
+    else:
+        # Get list of every reaction present in all models
+        reaction_set = set()
+        for model in model_list:
+            model_reactions = set([reaction.id for reaction in model.reactions])
+            if len(reaction_set) > 0:
+                reaction_set = reaction_set & model_reactions
+            else:
+                reaction_set = model_reactions
+        reaction_list = list(reaction_set)
+
+
+        for model in model_list:
+            variable_reactions = {}
+            reactions_different = [rxn for rxn in model.reactions if rxn.id not in reaction_list]
+            for reaction in reactions_different:
+                if not reaction.id in variable_reactions.keys():
+                    variable_reactions[reaction.id] = {'lb':model.reactions.get_by_id(reaction.id).lower_bound,\
+                                                        'ub':model.reactions.get_by_id(reaction.id).upper_bound}
+            model_states = pd.DataFrame({feature:True for feature in variable_reactions.keys()},index=[model.id])
+            features = pd.DataFrame(variable_reactions).T
+            if len(ensemble.features) > 0:
+                new_df = pd.concat([ensemble.features,features])
+                ensemble.features = new_df[~new_df.index.duplicated(keep='first')]
+                new_df = pd.concat([ensemble.states,model_states])
+                ensemble.states = new_df.fillna(False)
+            else:
+                ensemble.features = ensemble.features.join(features,how='outer')
+            #self.features = self.features.join(features,how='outer')
+                ensemble.states = ensemble.states.join(model_states,how='outer')
 
 def update_features_states(current_ensemble,model_list):
     """
