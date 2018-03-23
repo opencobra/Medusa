@@ -45,20 +45,19 @@ class Ensemble:
         if join_method not in ["concurrent","iterative"]:
             raise ValueError("join_method must be either 'concurrent' or 'iterative'")
 
+        self.features = pd.DataFrame()
+        self.states = pd.DataFrame()
         if not model_list:
             self.base_model = cobra.core.Model(base_id+'_base_model')
             #self.reaction_diffs = {}
-            self.features = pd.DataFrame()
-            self.states = pd.DataFrame()
         else:
+
             if join_method == "concurrent":
                 self.base_model = self._create_base_model(model_list,base_id=base_id+'_base_model')
                 #self.reaction_diffs = self._create_reaction_diffs(model_list)
-                self._set_features_states(model_list=model_list)
+                set_features_states(model_list=model_list)
             elif join_method == "iterative":
                 self.base_model = cobra.core.Model(base_id+'_base_model')
-                self.features = pd.DataFrame()
-                self.states = pd.DataFrame()
                 remainder = len(model_list) % join_size
                 steps = int(len(model_list)/join_size)
                 for i in range(steps):
@@ -94,7 +93,7 @@ class Ensemble:
             new_base_model = self._create_base_model(model_list=model_list)
             #new_reaction_diffs = self._create_reaction_diffs(model_list=model_list)
             self.base_model = new_base_model
-            self._set_features_states(model_list=model_list)
+            set_features_states(model_list=model_list)
             #self.reaction_diffs = new_reaction_diffs
         else:
             new_base_model = self._create_base_model(model_list=model_list)
@@ -204,9 +203,7 @@ class Ensemble:
     def _create_base_model(self,model_list,base_id='ensemble base'):
         '''
         Creates a base model from a list of universal models. Base models
-        contain all reactions present in a list of models. A reaction_diff
-        object is also returned, indicating the bounds for any reaction that
-        is different across any model in the ensemble.
+        contain all reactions present in a list of models.
         '''
         base_model = cobra.Model(base_id)
         for model in model_list:
@@ -262,48 +259,6 @@ class Ensemble:
                     # in both directions for this member of the ensemble
                     reaction_diffs[model.id][reaction] = {'lb':0.0,'ub':0.0}
         return reaction_diffs
-
-    def _set_features_states(self,model_list):
-        """
-        Sets the ensemble.features and ensemble.states dataframes given a list
-        of input models.
-
-        Parameters
-        ----------
-        model_list: list of cobra.core.Model objects
-            List of models to generate a single Ensemble object from.
-        """
-        # Get list of every reaction present in all models
-        reaction_set = set()
-        for model in model_list:
-            model_reactions = set([reaction.id for reaction in model.reactions])
-            if len(reaction_set) > 0:
-                reaction_set = reaction_set & model_reactions
-            else:
-                reaction_set = model_reactions
-        reaction_list = list(reaction_set)
-
-        self.features = pd.DataFrame()
-        self.states = pd.DataFrame()
-        for model in model_list:
-            variable_reactions = {}
-            reactions_different = [rxn for rxn in model.reactions if rxn.id not in reaction_list]
-            for reaction in reactions_different:
-                if not reaction.id in variable_reactions.keys():
-                    variable_reactions[reaction.id] = {'lb':model.reactions.get_by_id(reaction.id).lower_bound,\
-                                                        'ub':model.reactions.get_by_id(reaction.id).upper_bound}
-            model_states = pd.DataFrame({feature:True for feature in variable_reactions.keys()},index=[model.id])
-            features = pd.DataFrame(variable_reactions).T
-            if len(self.features) > 0:
-                new_df = pd.concat([self.features,features])
-                self.features = new_df[~new_df.index.duplicated(keep='first')]
-                new_df = pd.concat([self.states,model_states])
-                self.states = new_df.fillna(False)
-            else:
-                self.features = self.features.join(features,how='outer')
-            #self.features = self.features.join(features,how='outer')
-                self.states = self.states.join(model_states,how='outer')
-
 
 
     def ensemble_single_reaction_deletion(self,optimal_only=True,num_models=[]):
@@ -383,3 +338,65 @@ class Ensemble:
         self.base_model.objective = old_objective
 
         return leaks
+
+def set_features_states(ensemble,model_list):
+    """
+    Sets the ensemble.features and ensemble.states dataframes given a list
+    of input models. Used when creating a new ensemble. To update features
+    and states of an existing ensemble when adding additional models, use
+    _update_features_states.
+
+    Parameters
+    ----------
+    model_list: list of cobra.core.Model objects
+        List of models to generate a single Ensemble object from.
+    """
+    # Get list of every reaction present in all models
+    reaction_set = set()
+    for model in model_list:
+        model_reactions = set([reaction.id for reaction in model.reactions])
+        if len(reaction_set) > 0:
+            reaction_set = reaction_set & model_reactions
+        else:
+            reaction_set = model_reactions
+    reaction_list = list(reaction_set)
+
+    for model in model_list:
+        variable_reactions = {}
+        reactions_different = [rxn for rxn in model.reactions if rxn.id not in reaction_list]
+        for reaction in reactions_different:
+            if not reaction.id in variable_reactions.keys():
+                variable_reactions[reaction.id] = {'lb':model.reactions.get_by_id(reaction.id).lower_bound,\
+                                                    'ub':model.reactions.get_by_id(reaction.id).upper_bound}
+        model_states = pd.DataFrame({feature:True for feature in variable_reactions.keys()},index=[model.id])
+        features = pd.DataFrame(variable_reactions).T
+        if len(ensemble.features) > 0:
+            new_df = pd.concat([ensemble.features,features])
+            ensemble.features = new_df[~new_df.index.duplicated(keep='first')]
+            new_df = pd.concat([ensemble.states,model_states])
+            ensemble.states = new_df.fillna(False)
+        else:
+            ensemble.features = ensemble.features.join(features,how='outer')
+        #self.features = self.features.join(features,how='outer')
+            ensemble.states = ensemble.states.join(model_states,how='outer')
+
+def update_features_states(current_ensemble,model_list):
+    """
+    Updates the ensemble.features and ensemble.states dataframes given a list
+    of input models. Used when adding additional models to an ensemble. To
+    set features and states for a new ensemble, use set_features_states.
+
+    Parameters
+    ----------
+    model_list: list of cobra.core.Model objects
+        List of models to add to this Ensemble object.
+    """
+
+    # create a new ensemble from the input list
+    new_ensemble = Ensemble(base_id='new_models',model_list=model_list)
+
+    # merge the old ensemble with the new ensemble
+    all_features = pd.concat([current_ensemble.features,new_ensemble.features])
+    current_ensemble.features = all_features[~all_features.index.duplicated(keep='first')]
+    all_states = pd.concat([current_ensemble.states,new_ensemble.states])
+    current_ensemble.states = all_states.fillna(False)
