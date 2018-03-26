@@ -241,6 +241,10 @@ class Ensemble:
 
 
 
+
+
+
+
     def _update_states(self,new_ensemble):
         'placeholder'
 
@@ -342,9 +346,114 @@ def update_features_states(current_ensemble,model_list):
 
     # create a new ensemble from the input list
     new_ensemble = Ensemble(base_id='new_models',model_list=model_list)
-    current_ensemble._update_features(new_ensemble)
-    current_ensemble._update_states(new_ensemble)
-    current_ensemble._update_base(new_ensemble)
+    #current_ensemble._update_features(new_ensemble)
+    #current_ensemble._update_states(new_ensemble)
+    #current_ensemble._update_base(new_ensemble)
+
+    new_features = pd.concat([current_ensemble.features,new_ensemble.features],fillna=False)
+    duplicate_features = new_features.duplicated(new_features.columns.difference(['feature_count']))
+    new_features.loc[new_ensemble.features.index,'old_feature_count'] = new_ensemble.features['feature_count']
+
+    new_features = new_features[~duplicate_features] #remove true duplicates
+
+    new_features['feature_count'] = new_features.groupby('model_identifier').cumcount()
+
+    new_features.index = new_features['model_identifier'] + '_' + new_features['feature_count']
+
+    # reassign feature_ids in the state dataframe for new ensemble being added
+    old_feature_count = new_features.loc[~new_features['old_feature_count'].isna(),'old_feature_count']
+    new_feature_count = new_features.loc[~new_features['old_feature_count'].isna(),'feature_count']
+    old_feature_ids = new_features.loc[~new_features['old_feature_count'].isna(),'model_identifier'] + '_' + old_feature_count
+    new_feature_ids = new_features.loc[~new_features['old_feature_count'].isna(),'model_identifier'] + '_' + new_feature_count
+    translate_feature_counts = dict(zip(old_feature_ids,new_feature_ids))
+
+    new_ensemble.states = new_ensemble.states.rename(columns=translate_feature_counts)
+
+
+    # need to determine the state of features in each ensemble that are specified in only one of the two ensembles' features:
+    # for features in the existing ensemble, we also need to check whether features not specified in the new ensemble are ON or OFF in the entire new ensemble.
+    # for features in the new ensemble, we need to check whether features in the new ensemble not in the old features are ON or OFF in the entire old ensemble
+
+
+    old_features_constant_in_new = [feature for feature in current_ensemble.features.index.tolist() if feature not in new_ensemble.features.index.tolist()]
+    for feature in old_features_constant_in_new:
+        # get the parameters for the feature in the new base model
+        feature_params = current_ensemble.features.loc[feature]
+        if feature_params['type'] == 'reaction': # put this check here for later implementation of additional feature types
+            reaction = new_ensemble.base_model.reactions.get_by_id(feature_params['model_identifier'])
+            check_params = {'lower_bound':reaction.lower_bound,\
+                            'upper_bound':reaction.upper_bound}
+        else:
+            raise AssertionError('Unsupported feature type passed. Only reactions are currently supported')
+
+        # check whether the value in the new base model corresponds to an existing feature.
+        # when the feature is found, stop searching.
+        existing_features = new_features.loc[new_features['model_identifier'] == feature_params['model_identifer']]
+        found = False
+        for feature_index in existing_features.index.tolist():
+            this_feature = existing_features.loc[feature_index]
+
+            compare_feature = [this_feature[param] == check_params[param] for param in check_params.keys()]
+            if sum(compare_feature) == len(check_params.keys()):
+                new_ensemble.states[new_ensemble.states.index,this_feature.index] = True
+                found = True
+                break
+
+        # if the feature wasn't found, we create a new feature with the values from the new ensemble.
+        if not found:
+            new_feature = {'type':feature_params['type'],'model_identifier':feature_params['model_identifer']}
+            new_feature.update({param:check_param[param] for param in check_params.keys()})
+            # get the feature count for the model identifier in this feature
+            existing_feature_count = new_features.loc[new_features['model_identifer'] == new_feature['model_identifier'],'feature_count'].max()
+            new_feature['feature_count'] = existing_feature_count + 1
+            new_feature = pd.DataFrame(new_feature,index=new_feature['model_identifier']+'_'+new_feature['feature_count'])
+            # update the features and states with the new feature
+            new_features = pd.concat(new_features,new_feature,fillna=False)
+            new_ensemble.states[new_feature['model_identifier']] = True
+
+
+    new_features_constant_in_old = [feature for feature in new_ensemble.features.index.tolist() if feature not in current_ensemble.features.index.tolist()]
+    for feature in new_features_constant_in_old:
+        feature_params = new_ensemble.features.loc[feature]
+        if feature_params['type'] == 'reaction': # put this check here for later implementation of additional feature types
+            reaction = current_ensemble.base_model.reactions.get_by_id(feature_params['model_identifier'])
+            check_params = {'lower_bound':reaction.lower_bound,\
+                            'upper_bound':reaction.upper_bound}
+        else:
+            raise AssertionError('Unsupported feature type passed. Only reactions are currently supported')
+        # if a new feature is variable, but was constant in the old ensemble,
+        # we need to get the possible values of the feature in the new ensemble,
+        # and check whether the value in the base model for the old ensemble is the
+        # same as one of the features in the new ensemble. If it is the same,
+        # set the state for all old models to be True for that feature. If the values
+        # are not identical to an existing feature, create a new feature and set the state
+        # to True for all old models.
+
+        # check whether the value in the old base model corresponds to an existing feature in either ensemble.
+        # when the feature is found, stop searching.
+        existing_features = new_features.loc[new_features['model_identifier'] == feature_params['model_identifer']]
+        found = False
+        for feature_index in existing_features.index.tolist():
+            this_feature = existing_features.loc[feature_index]
+
+            compare_feature = [this_feature[param] == check_params[param] for param in check_params.keys()]
+            if sum(compare_feature) == len(check_params.keys()):
+                current_ensemble.states[current_ensemble.states.index,this_feature.index] = True
+                found = True
+                break
+
+        # if the feature wasn't found, we create a new feature with the values from the old ensemble.
+        if not found:
+            new_feature = {'type':feature_params['type'],'model_identifier':feature_params['model_identifer']}
+            new_feature.update({param:check_param[param] for param in check_params.keys()})
+            # get the feature count for the model identifier in this feature
+            existing_feature_count = new_features.loc[new_features['model_identifer'] == new_feature['model_identifier'],'feature_count'].max()
+            new_feature['feature_count'] = existing_feature_count + 1
+            new_feature = pd.DataFrame(new_feature,index=new_feature['model_identifier']+'_'+new_feature['feature_count'])
+            # update the features and states with the new feature
+            new_features = pd.concat(new_features,new_feature,fillna=False)
+            current_ensemble.states[new_feature['model_identifier']] = True
+
 
     # tasks:
     # 1. update base with new reactions
