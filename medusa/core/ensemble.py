@@ -286,24 +286,47 @@ def set_features_states(ensemble,model_list):
                                                         'upper_bound':model.reactions.get_by_id(reaction.id).upper_bound,\
                                                         'type':'reaction',\
                                                         'model_identifier':reaction.id}
-            model_states = pd.DataFrame({feature:True for feature in variable_reactions.keys()},index=[model.id])
+            #model_states = pd.DataFrame({feature:True for feature in variable_reactions.keys()},index=[model.id])
             features = pd.DataFrame(variable_reactions).T
             ### STILL NEED TO GET CORRECT FEATURE IDs BACK TO THE STATE DATAFRAME FOR REDUNDANT FEATURES
 
             if len(ensemble.features) > 0:
                 new_df = pd.concat([ensemble.features,features])
-                duplicate_features = new_df.duplicated()
-                new_df = new_df[~duplicated_features] # remove true duplicates
-                new_df.index = new_df.index + \
-                            new_df.groupby('model_identifier').cumcount().astype(str) # add integer to index based on the feature being assigned to the
-                            # same identifier within the model (e.g. same reaction id)
+                # get rid of duplicate entries, ignoring feature_count since the
+                # newly concatenated featured from this model won't have them yet
+                duplicate_features = new_df.duplicated(new_df.columns.difference(['feature_count']))
+                new_df['in_new_model'] = new_df.duplicated(new_df.columns.difference(['feature_count']),keep=False)
+
+                new_df = new_df[~duplicate_features] # remove true duplicates
+
+                # get the feature counts for remaining features with duplicate model identifiers
+                new_df['feature_count'] = new_df.groupby('model_identifier').cumcount()
+
+                # reassign the index based on new feature counts
+                new_df.index = new_df['model_identifier'] + '_' + new_df['feature_count'].astype(str)
+                new_df.loc[[rowlabel for rowlabel in new_df.index if rowlabel not in ensemble.features.index],['in_new_model']] = True
+
+                # record the model states using the new feature IDs
+                model_states = pd.DataFrame(new_df['in_new_model']).T
+                model_states.index = [model.id]
+
+                # drop the inventory column and reassign ensemble.features
+                new_df = new_df.drop('in_new_model',axis=1)
                 ensemble.features = new_df
+
+                # reassign the states. Order matters here, so write stringent tests for this.
                 new_df = pd.concat([ensemble.states,model_states])
                 ensemble.states = new_df.fillna(False)
             else:
                 ensemble.features = ensemble.features.join(features,how='outer')
+                ensemble.features['feature_count'] = 0
+                ensemble.features.index = ensemble.features['model_identifier']\
+                                            + '_' + \
+                                            ensemble.features['feature_count'].astype(str)
             #self.features = self.features.join(features,how='outer')
+                model_states = pd.DataFrame({feature:True for feature in variable_reactions.keys()},index=[model.id])
                 ensemble.states = ensemble.states.join(model_states,how='outer')
+                ensemble.states.columns = ensemble.features.index
 
 def update_features_states(current_ensemble,model_list):
     """
