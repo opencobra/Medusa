@@ -2,22 +2,112 @@
 
 from __future__ import absolute_import
 
+from cobra.core.object import Object
+from cobra.core import Model
+from cobra.core import DictList
+
 import cobra
 import random
 import pandas as pd
 
-class Ensemble:
+class Ensemble(Object):
     """
-    Ensemble of metabolic models. Contains a base_model of type
-    cobra.core.Model which consists of all reactions and genes
-    present in any model within the ensemble. Also contains a
-    reaction_diff of type dictionary which specifies reaction
-    bounds for each model for every reaction that contains a difference
-    in any model in the ensemble.
+    Ensemble of metabolic models
 
-    reaction_diff: {ensemble_member_id:{reaction_id:{'ub':ub,'lb':lb}}}
-    base_model: Cobra.core.Model object.
+    Parameters
+    ----------
+    identifier : string
+        The identifier to associate with the ensemble as a string.
+
+    list_of_models : list of cobra.core.Model
+        Either a list of existing Model objects in which case a new Model
+        object is instantiated and an ensemble is constructed using the list of
+        Models, or None/empty list, in which case an ensemble is created with
+        empty attributes.
+
+    name : string
+        Human-readable name for the ensemble
+
+    Attributes
+    ----------
+    base_model : Model
+        A cobra.core.Model that contains all variable and invariable components
+        of an ensemble.
+    members : DictList
+        A DictList where the key is the member identifier and the value is a
+        Member
+    features : DictList
+        A DictList where the key is the feature identifier and the value is a
+        Feature
     """
+    def __init__(self,list_of_models=[], identifier=None, name=None):
+        Object.init(self,identifier,name)
+        if len(list_of_models) > 1:
+            if not all(isinstance(x, Model) for x in list_of_models):
+                raise AttributeError("list_of_models may only contain cobra.core.Model objects")
+            self.features = DictList()
+            self._populate_features_base(list_of_models)
+            self._populate_base(list_of_models)
+            self._populate_members(list_of_models)
+
+        else:
+            if len(list_of_models) == 0:
+                self.base_model = Model(id_or_model=identifier+'_base_model',\
+                                        name=name)
+            else:
+                if not isinstance(list_of_models[0], Model):
+                    raise AttributeError("list_of_models may only contain cobra.core.Model objects")
+                self.base_model = list_of_models[0]
+
+    def _populate_features_base(self,list_of_models):
+        all_reactions = set()
+        base_model = list_of_models[0].copy()
+        all_reactions = all_reactions + set([rxn.id for rxn in base_model.reactions])
+        for model in list_of_models:
+            new_reactions = set([rxn.id for rxn in model.reactions]) - \
+                                all_reactions
+            reactions_to_add = [model.reactions.get_by_id(rxn) for rxn in new_reactions]
+            base_model.add_reactions(reactions_to_add)
+            all_reactions = all_reactions + set([rxn.id for rxn in model.reactions])
+
+        all_reactions = list(all_reactions)
+        variable_reactions = []
+        for reaction in all_reactions:
+            rxn_vals = {}
+            for model in list_of_models:
+                rxn_vals[model.id] = {}
+                rxn = model.reactions.get_by_id(reaction)
+                for reaction_attribute in REACTION_ATTRIBUTES:
+                    rxn_vals[model.id][reaction_attribute] = \
+                        getattr(rxn,reaction_attribute)
+
+            rxn_vals = pd.DataFrame(rxn_vals).T
+            for reaction_attribute in REACTION_ATTRIBUTES:
+                if len(rxn_vals[reaction_attribute].unique()) > 1:
+                    feature = Feature(ensemble=self, base_component=reaction,\
+                                        component_attribute=reaction_attribute,\
+                                        states=rxn_vals.to_dict())
+                    self.features += feature
+                    variable_reactions.append(reaction)
+
+        self.base_model = base_model
+
+
+
+
+
+        # for model in list_of_models:
+        #     for reaction in model.reactions:
+        #         if not reaction.id in feature_dict.keys():
+        #             feature_dict[reaction.id] = {}
+        #
+        #         for reaction_attribute in reaction_featuretypes:
+        #             if not reaction_attribute in feature_dict[reaction.id].keys():
+        #                 feature_dict[reaction.id][reaction_attribute] = {}
+        #             attribute_value = getattr(reaction,reaction_feature)
+        #             if attribute_value in feature_dict[reaction][reaction_attribute]:
+        #             feature_dict[reaction][reaction_attribute] = \
+        #                 getattr(reaction,reaction_feature)
 
     def __init__(self,base_id,model_list=None,join_method="concurrent",join_size=1):
         """
