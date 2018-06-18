@@ -231,75 +231,96 @@ def update_features_states(old_ensemble,model_list):
 
             features_in_both_and_new = pd.concat(all_features_in_new,features_only_in_both)
             features_only_in_new = all_features_in_new.loc[features_in_both_and_new.duplicated(keep=False)]
+
             _resolve_from_both_bases(features_only_in_old,new_ensemble,old_ensemble,updated_features,updated_states,features_in='old')
-            for feature_id in features_only_in_old.index.tolist():
-                feature = features_only_in_old.loc[feature]
-                if feature['type'] == 'reaction':
-                    check_params = {'lower_bound':new_ensemble.base_model.reactions.get_by_id(reaction).lower_bound,\
-                                    'upper_bound':new_ensemble.base_model.reactions.get_by_id(reaction).upper_bound}
-                else:
-                    raise AssertionError('Unsupported feature type passed. Only reactions are currently supported')
-                # check if the values for the reaction in the new base are equal to the feature params
-                found = False
-                for param in check_params.keys():
-                    compare_feature = [feature[param] == check_params[param] for param in check_params.keys()]
-                    if sum(compare_feature) == len(check_params.keys()):
-                                     updated_states[new_ensemble.states.index,feature.index] = True
-                                     found = True
-                                     break
+            _resolve_from_both_bases(features_only_in_new,new_ensemble,old_ensemble,updated_features,updated_states,features_in='new')
+            _resolve_from_both_bases(features_only_in_both,new_ensemble,old_ensemble,updated_features,updated_states,features_in='both')
+            # for feature_id in features_only_in_old.index.tolist():
+            #     feature = features_only_in_old.loc[feature]
+            #     if feature['type'] == 'reaction':
+            #         check_params = {'lower_bound':new_ensemble.base_model.reactions.get_by_id(reaction).lower_bound,\
+            #                         'upper_bound':new_ensemble.base_model.reactions.get_by_id(reaction).upper_bound}
+            #     else:
+            #         raise AssertionError('Unsupported feature type passed. Only reactions are currently supported')
+            #     # check if the values for the reaction in the new base are equal to the feature params
+            #     found = False
+            #     for param in check_params.keys():
+            #         compare_feature = [feature[param] == check_params[param] for param in check_params.keys()]
+            #         if sum(compare_feature) == len(check_params.keys()):
+            #                          updated_states[new_ensemble.states.index,feature.index] = True
+            #                          found = True
+            #                          break
+            #
+            #     if not found:
+            #         new_feature = {'type':feature['type'],'model_identifier':feature['model_identifer']}
+            #         new_feature.update({param:check_params[param] for param in check_params.keys()})
+            #         # get the feature count for the model identifier in this feature
+            #         existing_feature_count = updated_features.loc[updated_features['model_identifer'] == new_feature['model_identifier'],'feature_count'].max()
+            #         new_feature['feature_count'] = existing_feature_count + 1
+            #         new_feature = pd.DataFrame(new_feature,index=new_feature['model_identifier']+'_'+new_feature['feature_count'])
+            #         # update the features and states with the new feature
+            #         updated_features = pd.concat([updated_features,new_feature])
+            #         updated_features = updated_features.fillna(False)
+            #         updated_states[new_feature['model_identifier']] = True
 
-                if not found:
-                    new_feature = {'type':feature['type'],'model_identifier':feature['model_identifer']}
-                    new_feature.update({param:check_params[param] for param in check_params.keys()})
-                    # get the feature count for the model identifier in this feature
-                    existing_feature_count = updated_features.loc[updated_features['model_identifer'] == new_feature['model_identifier'],'feature_count'].max()
-                    new_feature['feature_count'] = existing_feature_count + 1
-                    new_feature = pd.DataFrame(new_feature,index=new_feature['model_identifier']+'_'+new_feature['feature_count'])
-                    # update the features and states with the new feature
-                    updated_features = pd.concat([updated_features,new_feature])
-                    updated_features = updated_features.fillna(False)
-                    updated_states[new_feature['model_identifier']] = True
-
-def _resolve_from_both_bases(features_only_in_one,new_ensemble,old_ensemble,updated_features,updated_states,features_in='old'):
+def _resolve_from_both_bases(features_only_in,new_ensemble,old_ensemble,updated_features,updated_states,features_in='old'):
     if features_in=='old':
-        for feature_id in features_only_in_one.index.tolist():
-            feature = features_only_in_one.loc[feature]
+        for feature_id in features_only_in.index.tolist():
+            feature = features_only_in.loc[feature_id]
             found = _find_feature_from_base(feature,new_ensemble)
             if found:
                 updated_states[new_ensemble.states.index,feature_id] = True
+                break
+        if not found:
+            feature = features_only_in.loc[features_only_in.index.tolist()[0]]
+            new_feature = {'type':feature['type'],'model_identifier':feature['model_identifer']}
+            if feature['type'] == 'reaction':
+                check_params = {'lower_bound':new_ensemble.base_model.reactions.get_by_id(feature['model_identifier']).lower_bound,\
+                                'upper_bound':new_ensemble.base_model.reactions.get_by_id(feature['model_identifier']).upper_bound}
             else:
+                raise AssertionError('Unsupported feature type passed. Only reactions are currently supported')
 
-                new_feature = {'type':feature['type'],'model_identifier':feature['model_identifer']}
-                new_feature.update({param:check_params[param] for param in check_params.keys()})
-                # get the feature count for the model identifier in this feature
-                existing_feature_count = updated_features.loc[updated_features['model_identifer'] == new_feature['model_identifier'],'feature_count'].max()
-                new_feature['feature_count'] = existing_feature_count + 1
-                new_feature = pd.DataFrame(new_feature,index=new_feature['model_identifier']+'_'+new_feature['feature_count'])
-                # update the features and states with the new feature
-                updated_features = pd.concat([updated_features,new_feature])
-                updated_features = updated_features.fillna(False)
-                updated_states[new_ensemble.states.index,new_feature['model_identifier']] = True # might need to update updated_states to include models from the new ensemble prior to this
+            new_feature.update({param:check_params[param] for param in check_params.keys()})
+            # get the feature count for the model identifier in this feature
+            existing_feature_count = updated_features.loc[updated_features['model_identifer'] == new_feature['model_identifier'],'feature_count'].max()
+            new_feature['feature_count'] = existing_feature_count + 1
+            new_feature = pd.DataFrame(new_feature,index=new_feature['model_identifier']+'_'+new_feature['feature_count'])
+            # update the features and states with the new feature
+            updated_features = pd.concat([updated_features,new_feature])
+            updated_features = updated_features.fillna(False)
+            updated_states[new_ensemble.states.index,new_feature['model_identifier']] = True # might need to update updated_states to include models from the new ensemble prior to this
 
     elif features_in=='new':
-        for feature_id in features_only_in_one.index.tolist():
-            feature = features_only_in_one.loc[feature]
+        for feature_id in features_only_in.index.tolist():
+            feature = features_only_in.loc[feature]
             found = _find_feature_from_base(feature,old_ensemble)
             if found:
+                # if the feature is only in the new ensemble,
                 updated_states[old_ensemble.states.index,feature_id] = True
+                break
+        if not found:
+            feature = features_only_in.loc[features_only_in.index.tolist()[0]]
+            new_feature = {'type':feature['type'],'model_identifier':feature['model_identifer']}
+            if feature['type'] == 'reaction':
+                check_params = {'lower_bound':old_ensemble.base_model.reactions.get_by_id(feature['model_identifier']).lower_bound,\
+                                'upper_bound':old_ensemble.base_model.reactions.get_by_id(feature['model_identifier']).upper_bound}
             else:
-                new_feature = {'type':feature['type'],'model_identifier':feature['model_identifer']}
-                new_feature.update({param:check_params[param] for param in check_params.keys()})
-                # get the feature count for the model identifier in this feature
-                existing_feature_count = updated_features.loc[updated_features['model_identifer'] == new_feature['model_identifier'],'feature_count'].max()
-                new_feature['feature_count'] = existing_feature_count + 1
-                new_feature = pd.DataFrame(new_feature,index=new_feature['model_identifier']+'_'+new_feature['feature_count'])
-                # update the features and states with the new feature
-                updated_features = pd.concat([updated_features,new_feature])
-                updated_features = updated_features.fillna(False)
-                updated_states[old_ensemble.states.index,new_feature['model_identifier']] = True
+                raise AssertionError('Unsupported feature type passed. Only reactions are currently supported')
+
+            new_feature.update({param:check_params[param] for param in check_params.keys()})
+            # get the feature count for the model identifier in this feature
+            existing_feature_count = updated_features.loc[updated_features['model_identifer'] == new_feature['model_identifier'],'feature_count'].max()
+            new_feature['feature_count'] = existing_feature_count + 1
+            new_feature = pd.DataFrame(new_feature,index=new_feature['model_identifier']+'_'+new_feature['feature_count'])
+            # update the features and states with the new feature
+            updated_features = pd.concat([updated_features,new_feature])
+            updated_features = updated_features.fillna(False)
+            updated_states[old_ensemble.states.index,new_feature['model_identifier']] = True # might need to update updated_states to include models from the new ensemble prior to this
 
     elif features_in=='both':
-
+        for feature_id in features_only_in.index.tolist():
+            feature = features_only_in.loc[feature]
+            # These features have the same values
 
 def _find_feature_from_base(feature,ensemble):
     if feature['type'] == 'reaction':
