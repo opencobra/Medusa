@@ -3,6 +3,7 @@ from medusa.core.ensemble import Ensemble
 from medusa.core.ensemble import update_features_states
 
 
+
 # def test_concurrent_join():
 #     # test creation of an ensemble from a list of models with all models loaded
 #     # in memory

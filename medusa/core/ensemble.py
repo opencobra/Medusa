@@ -19,7 +19,7 @@ class Ensemble(Object):
     identifier : string
         The identifier to associate with the ensemble as a string.
 
-    list_of_models : list of cobra.core.Model
+    list_of_models : list of cobra.core.model.Model
         Either a list of existing Model objects in which case a new Model
         object is instantiated and an ensemble is constructed using the list of
         Models, or None/empty list, in which case an ensemble is created with
@@ -35,10 +35,10 @@ class Ensemble(Object):
         of an ensemble.
     members : DictList
         A DictList where the key is the member identifier and the value is a
-        Member
+        medusa.core.member.Member object
     features : DictList
         A DictList where the key is the feature identifier and the value is a
-        Feature
+        medusa.core.feature.Feature object
     """
     def __init__(self,list_of_models=[], identifier=None, name=None):
         Object.init(self,identifier,name)
@@ -47,7 +47,6 @@ class Ensemble(Object):
                 raise AttributeError("list_of_models may only contain cobra.core.Model objects")
             self.features = DictList()
             self._populate_features_base(list_of_models)
-            self._populate_base(list_of_models)
             self._populate_members(list_of_models)
 
         else:
@@ -60,6 +59,7 @@ class Ensemble(Object):
                 self.base_model = list_of_models[0]
 
     def _populate_features_base(self,list_of_models):
+        # Determine all reactions across all models and construct the base model
         all_reactions = set()
         base_model = list_of_models[0].copy()
         all_reactions = all_reactions + set([rxn.id for rxn in base_model.reactions])
@@ -71,6 +71,9 @@ class Ensemble(Object):
             all_reactions = all_reactions + set([rxn.id for rxn in model.reactions])
 
         all_reactions = list(all_reactions)
+
+        # Determine reactions that vary in any model and construct a feature for
+        # each unique parameter value for that reaction in the ensemble
         variable_reactions = []
         for reaction in all_reactions:
             rxn_vals = {}
@@ -84,7 +87,8 @@ class Ensemble(Object):
             rxn_vals = pd.DataFrame(rxn_vals).T
             for reaction_attribute in REACTION_ATTRIBUTES:
                 if len(rxn_vals[reaction_attribute].unique()) > 1:
-                    feature = Feature(ensemble=self, base_component=reaction,\
+                    rxn_from_base = base_model.reactions.get_by_id(reaction)
+                    feature = Feature(ensemble=self, base_component=rxn_from_base,\
                                         component_attribute=reaction_attribute,\
                                         states=rxn_vals.to_dict())
                     self.features += feature
