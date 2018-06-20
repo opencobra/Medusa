@@ -66,8 +66,8 @@ def test_fba_random_sample():
 def test_fba_specific_models():
         # test return of FBA on specific ensemble members
         ensemble = construct_mixed_ensemble()
-        model1 = list(ensemble.reaction_diffs.keys())[0]
-        model2 = list(ensemble.reaction_diffs.keys())[1]
+        model1 = ensemble.members[0]
+        model2 = ensemble.members[1]
         model_list = [model1,model2]
         fba_fluxes = optimize_ensemble(ensemble,
                                 specific_models=model_list)
