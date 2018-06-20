@@ -143,6 +143,6 @@ class Ensemble(Object):
             if isinstance(feature.base_component, cobra.core.Reaction):
                 setattr(feature.base_component,\
                         feature.component_attribute,\
-                        feature.state[member.id])
+                        feature.states[member.id])
             else:
                 raise AttributeError("Only cobra.core.Reaction supported for base_component type")
