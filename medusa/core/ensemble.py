@@ -52,9 +52,9 @@ class Ensemble(Object):
         if len(list_of_models) > 1:
             if not all(isinstance(x, Model) for x in list_of_models):
                 raise AttributeError("list_of_models may only contain cobra.core.Model objects")
-            if assert len([model.id for model in list_of_models]) > \
+            if len([model.id for model in list_of_models]) > \
                             len(set([model.id for model in list_of_models])):
-                AssertionError("Ensemble members cannot have duplicate model ids.")
+                raise AssertionError("Ensemble members cannot have duplicate model ids.")
             self.features = DictList()
             self._populate_features_base(list_of_models)
 
