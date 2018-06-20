@@ -5,6 +5,7 @@ from __future__ import absolute_import
 from cobra.core.object import Object
 from cobra.core import Model
 from cobra.core import DictList
+from cobra.core import Reaction
 
 from medusa.core.member import Member
 from medusa.core.feature import Feature
@@ -129,3 +130,19 @@ class Ensemble(Object):
 
             self.members += [member]
             model_count += 1
+
+    def set_state(self,member):
+        """Set the state of the base model to represent a single member
+
+        """
+        # if member was passed as an id, get the actual member object
+        if isinstance(member, str):
+            member = self.members.get_by_id(member)
+
+        for feature in self.features:
+            if isinstance(feature.base_component, cobra.core.Reaction):
+                setattr(feature.base_component,\
+                        feature.base_component.component_attribute,\
+                        feature.state[member.id])
+            else:
+                raise AttributeError("Only cobra.core.Reaction supported for base_component type")
