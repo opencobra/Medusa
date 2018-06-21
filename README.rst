@@ -1,6 +1,8 @@
 Medusa - Analysis of ensembles of metabolic network reconstructions
 ===================================================================
 
+|Build Status| |PyPI|
+
 Medusa is a tool for constraint-based reconstruction and analysis (COBRA) of ensembles. It builds on the cobrapy package (https://github.com/opencobra/cobrapy) by extending most single-model functionality to efficient ensemble-scale analysis. Additionally, Medusa provides novel functions for the analysis of ensembles.
 
 Medusa is developed openly. We are currently porting code from previous/in-progress projects to generalize beyond the specific use cases that project code was originally developed for. Development plans can be found in the root of the repository in "version_release_plan.txt".
@@ -45,3 +47,7 @@ Feel free to post issues via github or contact us directly via email with any qu
 Authors:
 Greg Medlock (gmedlo [at] gmail [dot] com)
 
+.. |Build Status| image:: https://api.travis-ci.org/gregmedlock/Medusa.svg?branch=master
+   :target: https://travis-ci.org/gregmedlock/Medusa/
+.. |PyPI| image:: https://badge.fury.io/py/medusa-cobra.svg
+   :target: https://pypi.python.org/pypi/medusa-cobra

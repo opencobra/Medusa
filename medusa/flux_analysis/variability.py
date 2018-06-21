@@ -53,7 +53,7 @@ def ensemble_fva(ensemble, reaction_list, num_models=[],specific_models=None,
     '''
     if not num_models:
         # if not specified, use all models
-        num_models = len(ensemble.reaction_diffs.keys())
+        num_models = len(ensemble.members)
 
     if isinstance(reaction_list,str):
         reaction_list = [reaction_list]
@@ -65,14 +65,11 @@ def ensemble_fva(ensemble, reaction_list, num_models=[],specific_models=None,
     if specific_models:
         model_list = specific_models
     else:
-        model_list = sample(list(ensemble.reaction_diffs.keys()),num_models)
+        model_list = sample(ensemble.members,num_models)
+        model_list = [model.id for model in model_list]
     with ensemble.base_model:
         for model in model_list:
-            diffs = ensemble.reaction_diffs[model]
-            for reaction in diffs.keys():
-                rxn = ensemble.base_model.reactions.get_by_id(reaction)
-                rxn.lower_bound = ensemble.reaction_diffs[model][reaction]['lb']
-                rxn.upper_bound = ensemble.reaction_diffs[model][reaction]['ub']
+            ensemble.set_state(model)
             fva_result = flux_variability_analysis(
                     ensemble.base_model,reaction_list=reaction_list,
                     fraction_of_optimum=fraction_of_optimum,

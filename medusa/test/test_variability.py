@@ -14,8 +14,8 @@ def construct_textbook_ensemble():
     model3 = create_test_model("textbook")
     model3.remove_reactions(model3.reactions[2:5])
     model3.id = 'third_textbook'
-    textbook_ensemble = Ensemble(model_list=[model1,model2,model3],
-                                        base_id='textbook_ensemble')
+    textbook_ensemble = Ensemble(list_of_models=[model1,model2,model3],
+                                        identifier='textbook_ensemble')
     return textbook_ensemble
 
 def test_fva_return_dims():
@@ -26,5 +26,5 @@ def test_fva_return_dims():
     fva_fluxes = ensemble_fva(ensemble,reaction_list=ex_rxns)
     rows = fva_fluxes.shape[0]
     columns = fva_fluxes.shape[1]
-    assert rows == (len(ensemble.reaction_diffs.keys())*2) # two rows for each model
+    assert rows == (len(ensemble.members)*2) # two rows for each model
     assert columns == (len(ex_rxns) + 1) # one additional column for model name
