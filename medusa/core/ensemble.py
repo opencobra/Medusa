@@ -134,6 +134,7 @@ class Ensemble(Object):
             self.members += [member]
             model_count += 1
 
+
     def set_state(self,member):
         """Set the state of the base model to represent a single member
 
