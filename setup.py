@@ -4,11 +4,11 @@ setup(
     name='medusa-cobra',
     description='Ensemble modeling using constraint-based reconstruction and analysis (COBRA)',
     long_description='Medusa extends various algorithms and analyses used in the COBRA field to ensemble-scale, and provides a high-level user interface for analysis, visualization, and interpreting simulation results.',
-    version='0.1.1a_1',
+    version='0.1.2',
     author='Gregory Medlock',
     author_email='gmedlo@gmail.com',
     url='https://github.com/gregmedlock/Medusa',
-    download_url='https://github.com/gregmedlock/Medusa/archive/0.1.1a_1.tar.gz',
+    download_url='https://github.com/gregmedlock/Medusa/archive/0.1.2.tar.gz',
     keywords=['computational biology','systems biology','biology'],
     license='MIT',
     classifiers=[
@@ -19,6 +19,6 @@ setup(
     'Programming Language :: Python :: 2'
     ],
     packages=find_packages(),
-    install_requires=['cobra>=0.8.0','pandas>=0.17.0'],
+    install_requires=['cobra>=0.13.0'],
     package_data={'':  ['test/data/*']}
 )
