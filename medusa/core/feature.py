@@ -40,7 +40,7 @@ class Feature(Object):
         self.base_component = base_component
         self.component_attribute = component_attribute
         self.states = states
-        
+
 
     def get_model_state(self,member_id):
         """Get the state of the feature for a particular member

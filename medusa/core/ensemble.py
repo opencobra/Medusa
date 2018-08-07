@@ -120,7 +120,6 @@ class Ensemble(Object):
         self.base_model = base_model
 
     def _populate_members(self,list_of_models):
-        model_count = 0
         for model in list_of_models:
             model_states = dict()
             for feature in self.features:
@@ -132,7 +131,6 @@ class Ensemble(Object):
                             states=model_states)
 
             self.members += [member]
-            model_count += 1
 
 
     def set_state(self,member):
