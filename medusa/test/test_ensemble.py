@@ -97,7 +97,7 @@ def test_pickle():
     test_ensemble = construct_mixed_ensemble()
 
     # pickle and unpickle the ensemble, then rerun test_mixed_ensemble_creation
-    save_loc = './data/test_pickle.pickle'
+    save_loc = 'test_pickle.pickle'
     test_ensemble.to_pickle(save_loc)
 
     with open(save_loc,'rb') as infile:
