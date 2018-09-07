@@ -494,7 +494,7 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
     features = DictList()
     for reaction in reactions_needing_features_objs:
         for attribute in REACTION_ATTRIBUTES:
-            identifier = reaction.id + attribute
+            identifier = reaction.id + "_" + attribute
             name = reaction.name
             feature = Feature(identifier,name)
             feature.ensemble = ensemble

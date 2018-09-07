@@ -10,6 +10,8 @@ from cobra.core import Reaction
 from medusa.core.member import Member
 from medusa.core.feature import Feature
 
+from pickle import dump
+
 import cobra
 import random
 import pandas as pd
@@ -148,3 +150,17 @@ class Ensemble(Object):
                         feature.states[member.id])
             else:
                 raise AttributeError("Only cobra.core.Reaction supported for base_component type")
+
+    def to_pickle(self, filename):
+        """
+        Save an ensemble as a pickled object. Pickling is currently the only supported
+        method for saving and loading ensembles.
+
+        Parameters
+        ----------
+        filename : String
+            location to save the pickle.
+        """
+
+        with open(filename, "wb") as outfile:
+            dump(self, outfile, protocol=4)
