@@ -5,7 +5,7 @@ from cobra.io import load_json_model
 from cobra.core import Reaction
 
 from medusa.core.ensemble import Ensemble
-from medusa.reconstruct.expand import expand
+from medusa.reconstruct import expand
 
 REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
 MISSING_ATTRIBUTE_DEFAULT = {'lower_bound':0,'upper_bound':0}
