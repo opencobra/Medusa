@@ -29,7 +29,7 @@ Medusa can be loaded in python with::
 Resources
 ~~~~~~~~~
 
-We highly recommend familiarizing yourself with standard COBRA methods in the cobrapy package (https://github.com/opencobra/cobrapy). Some examples of ensemble analyses with genome-scale metabolic models can be found in our `recent preprint<https://doi.org/10.1101/460071>`_ and the accompanying `code repository<https://github.com/gregmedlock/ssl_ensembles>`_.
+We highly recommend familiarizing yourself with standard COBRA methods in the cobrapy package (https://github.com/opencobra/cobrapy). Some examples of ensemble analyses with genome-scale metabolic models can be found in our `recent preprint <https://doi.org/10.1101/460071>`_ and the accompanying `code repository <https://github.com/gregmedlock/ssl_ensembles>`_.
 
 For reading on ensembles in metabolic modeling and systems biology, see:
 
