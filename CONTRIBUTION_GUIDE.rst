@@ -21,7 +21,7 @@ For now, we are following the cobrapy contribution guidelines, which can be foun
 Documentation
 ~~~~~~~~~~~~~
 
-Documentation is managed with [Readthedocs](https://docs.readthedocs.io/en/latest/) using [Sphinx](http://www.sphinx-doc.org/en/master/index.html). Readthedocs manages automated deployment as html to https://medusa.readthedocs.io/en/latest/, and we primarily use Jupyter notebooks for each section of the documentation. Sphinx and Readthedocs essentially handle the conversion of our collection of Jupyter notebooks to a nice HTML document.
+Documentation is managed with [Readthedocs](https://docs.readthedocs.io/en/latest/) using [Sphinx](http://www.sphinx-doc.org/en/master/index.html). Readthedocs manages automated deployment as html to https://medusa.readthedocs.io/en/latest/, and we primarily use Jupyter notebooks for each section of the documentation. Sphinx and Readthedocs essentially handle the conversion of our collection of Jupyter notebooks to a nice HTML document. Recent builds of the documentation, including failed builds, can be viewed [here](https://readthedocs.org/projects/medusa/builds/).
 
 TODO: add instructions for updating the documentation and changing the build process here.
 
