@@ -16,6 +16,7 @@ For installation instructions, please see `README.rst <https://github.com/gregme
     creating_ensemble
     simulating
     deletions
+    machine_learning
     io
     faq
 
