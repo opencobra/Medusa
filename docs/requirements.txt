@@ -12,6 +12,7 @@ entrypoints==0.2.3
 future==0.17.1
 idna==2.7
 imagesize==1.1.0
+IPython==7.1.1
 jedi==0.13.1
 Jinja2==2.10
 jsonschema==2.6.0
