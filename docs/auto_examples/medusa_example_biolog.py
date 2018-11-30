@@ -134,7 +134,6 @@ print(len(ensemble.members))
 
 # TODO: with the ensemble in hand, generate a histogram of predicted
 # flux through biomass to display for the thumbnail.
-%matplotlib inline
 from medusa.flux_analysis import flux_balance
 import matplotlib.pylab as plt
 predicted_growth = flux_balance.optimize_ensemble(ensemble, return_flux=['bio1'])

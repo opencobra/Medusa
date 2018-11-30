@@ -7,21 +7,15 @@
 .. _sphx_glr_auto_examples_medusa_example_biolog.py:
 
 
-SyntaxError
-===========
+Generating an ensemble by gapfilling using growth phenotype data
+=========================
 
-Example script with invalid Python syntax
+In this example, we demonstrate how to generate an ensemble by gapfilling a model using growth phenotyping data from biolog growth conditions which contain a single Carbon or Nitrogen source.
 
 
 
 .. code-block:: python
 
-    """
-    Generating an ensemble by gapfilling using growth phenotype data
-    =========================
-
-    In this example, we demonstrate how to generate an ensemble by gapfilling a model using growth phenotyping data from biolog growth conditions which contain a single Carbon or Nitrogen source.
-    """
 
     # Load the test model for Staphylococcus aureus, originally generated with ModelSEED
     import medusa
@@ -152,7 +146,6 @@ Example script with invalid Python syntax
 
     # TODO: with the ensemble in hand, generate a histogram of predicted
     # flux through biomass to display for the thumbnail.
-    %matplotlib inline
     from medusa.flux_analysis import flux_balance
     import matplotlib.pylab as plt
     predicted_growth = flux_balance.optimize_ensemble(ensemble, return_flux=['bio1'])

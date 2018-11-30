@@ -9,7 +9,7 @@ Below is a gallery of examples
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="Example script with invalid Python syntax ">
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we demonstrate how to generate an ensemble by gapfilling a model using growth ...">
 
 .. only:: html
 
