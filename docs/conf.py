@@ -42,7 +42,8 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.coverage',
     'sphinx.ext.imgmath',
-    'nbsphinx'
+    'nbsphinx',
+    'sphinx_gallery.gen_gallery'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -67,7 +68,10 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = ['_build', 
+                    'Thumbs.db', 
+                    '.DS_Store', 
+                    '.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = None
@@ -84,7 +88,7 @@ html_theme = 'sphinx_rtd_theme'
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
+html_theme_options = {'collapse_navigation':False}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -178,3 +182,11 @@ epub_exclude_files = ['search.html']
 
 
 # -- Extension configuration -------------------------------------------------
+
+# sphinx-gallery parameters
+sphinx_gallery_conf = {
+     # path to your examples scripts
+     'examples_dirs': '../examples',
+     # path where to save gallery generated examples
+     'gallery_dirs': 'auto_examples',
+}

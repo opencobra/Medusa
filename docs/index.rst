@@ -8,6 +8,21 @@ Welcome to medusa's documentation!
 
 For installation instructions, please see `README.rst <https://github.com/gregmedlock/Medusa/blob/development/README.rst>`_.
 
+********
+Examples
+********
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Example galleries
+
+   auto_examples/index
+    
+
+**********
+User Guide
+**********
+
 .. toctree::
     :numbered:
     :maxdepth: 2
