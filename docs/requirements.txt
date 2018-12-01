@@ -29,7 +29,7 @@ jupyterlab-server==0.2.0
 kiwisolver==1.0.1
 MarkupSafe==1.1.0
 matplotlib==3.0.2
--e git+https://github.com/gregmedlock/Medusa.git@8b56d01ca74b06f1b70b9c0708f08f3f0c50432f#egg=medusa_cobra
+-e git+https://github.com/gregmedlock/Medusa.git@4191b1c82ae4b4e56fce50ad5eafc85ae8b99f81#egg=medusa_cobra
 mistune==0.8.4
 mpmath==1.0.0
 nbconvert==5.3.1
@@ -64,7 +64,6 @@ Send2Trash==1.5.0
 six==1.11.0
 snowballstemmer==1.2.1
 Sphinx==1.8.2
-sphinx-gallery==0.2.0
 sphinx-rtd-theme==0.4.2
 sphinxcontrib-websupport==1.1.0
 swiglpk==4.65.0

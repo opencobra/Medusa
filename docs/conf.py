@@ -42,8 +42,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.coverage',
     'sphinx.ext.imgmath',
-    'nbsphinx',
-    'sphinx_gallery.gen_gallery'
+    'nbsphinx'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -182,11 +181,3 @@ epub_exclude_files = ['search.html']
 
 
 # -- Extension configuration -------------------------------------------------
-
-# sphinx-gallery parameters
-sphinx_gallery_conf = {
-     # path to your examples scripts
-     'examples_dirs': '../examples',
-     # path where to save gallery generated examples
-     'gallery_dirs': 'auto_examples',
-}

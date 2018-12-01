@@ -8,24 +8,38 @@ Welcome to medusa's documentation!
 
 For installation instructions, please see `README.rst <https://github.com/gregmedlock/Medusa/blob/development/README.rst>`_.
 
-********
-Examples
-********
+
+Index
+-----
+
+**Getting Started**
+
+* :doc:`why`
+* :doc:`install`
+* :doc:`Use cases`
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Example galleries
+    :maxdepth: 1
+    :hidden:
+    :caption: Getting Started
 
-   auto_examples/index
-    
+    why
+    install
+    usecases
 
-**********
-User Guide
-**********
+**User Guide**
+
+* :doc:`getting_started`
+* :doc:`creating_ensemble`
+* :doc:`simulating`
+* :doc:`machine_learning`
+* :doc:`io`
+* :doc:`faq`
 
 .. toctree::
-    :numbered:
-    :maxdepth: 2
+    :maxdepth: 1
+    :hidden:
+    :caption: User Guide
     
     getting_started
     creating_ensemble
