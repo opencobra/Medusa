@@ -8,7 +8,6 @@ import cobra.test
 from cobra.core import Reaction
 
 from medusa.core.ensemble import Ensemble
-from medusa.reconstruct import expand
 
 from cobra.io import load_json_model
 from os.path import abspath, dirname, join
