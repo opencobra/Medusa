@@ -12,30 +12,23 @@ from medusa.core.ensemble import Ensemble
 from cobra.io import load_json_model
 from os.path import abspath, dirname, join
 
+from pickle import load
+
 medusa_directory = abspath(join(dirname(abspath(__file__)), ".."))
 data_dir = join(medusa_directory,"test","data","")
 
-def create_test_ensemble(model_name="textbook"):
+def create_test_ensemble(ensemble_name="Staphylococcus aureus"):
     """Returns a previously-generated ensemble for testing
     model_name: str
-        One of 'ASF356' or 'ASF519'
+        One of 'Staphylococcus_aureus_ensemble'
     """
-    if model_name == "ASF356":
-        base_model = cobra.io.load_json_model(join(data_dir, 'ASF356_base_model.json'))
-        with open(join(data_dir, 'ASF356_base_model_reaction_diffs.json'),'r') as infile:
-            reaction_diffs = json.load(infile)
+    if ensemble_name == "Staphylococcus aureus":
+        with open(join(data_dir, "Staphylococcus_aureus_ensemble.pickle"), 'rb') as infile:
+            test_ensemble = load(infile)
+    else:
+        raise ValueError('ensemble_name does not match one of the test ensembles available')
 
-    elif model_name == "ASF519":
-        base_model = cobra.io.load_json_model(join(data_dir, 'ASF519_base_model.json'))
-        with open(join(data_dir, 'ASF519_base_model_reaction_diffs.json'),'r') as infile:
-            reaction_diffs = json.load(infile)
-
-
-
-    test_model = medusa.Ensemble(base_id=base_model.id)
-    test_model.base_model = base_model
-    test_model.reaction_diffs = reaction_diffs
-    return test_model
+    return test_ensemble
 
 def create_test_model(model_name="textbook"):
     """Returns a cobra.Model for testing
