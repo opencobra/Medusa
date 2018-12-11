@@ -16,7 +16,6 @@ Index
 
 * :doc:`why`
 * :doc:`install`
-* :doc:`Use cases`
 
 .. toctree::
     :maxdepth: 1
@@ -25,14 +24,27 @@ Index
 
     why
     install
-    usecases
+    
+**Examples**
+
+* :doc:`machine_learning`
+* :doc:`stats_compare`
+* :doc:`assess_ROC`
+
+.. toctree::
+    :maxdepth: 1
+    :hidden:
+    :caption: Examples
+    
+    machine_learning
+    stats_compare
+    assess_ROC
 
 **User Guide**
 
-* :doc:`getting_started`
+* :doc:`medusa_objects`
 * :doc:`creating_ensemble`
 * :doc:`simulating`
-* :doc:`machine_learning`
 * :doc:`io`
 * :doc:`faq`
 
@@ -41,10 +53,9 @@ Index
     :hidden:
     :caption: User Guide
     
-    getting_started
+    medusa_objects
     creating_ensemble
     simulating
-    machine_learning
     io
     faq
 
