@@ -4,7 +4,7 @@ setup(
     name='medusa-cobra',
     description='Ensemble modeling using constraint-based reconstruction and analysis (COBRA)',
     long_description='Medusa extends various algorithms and analyses used in the COBRA field to ensemble-scale, and provides a high-level user interface for analysis, visualization, and interpreting simulation results.',
-    version='0.2',
+    version='v0.2',
     author='Gregory Medlock',
     author_email='gmedlo@gmail.com',
     url='https://github.com/gregmedlock/Medusa',
