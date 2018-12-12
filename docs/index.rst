@@ -6,6 +6,8 @@
 Welcome to medusa's documentation!
 ==================================
 
+Medusa is a tool for constraint-based reconstruction and analysis (COBRA) of ensembles. It builds on the cobrapy package (https://github.com/opencobra/cobrapy) by extending most single-model functionality to efficient ensemble-scale analysis. Additionally, Medusa provides novel functions for the analysis of ensembles.
+
 For installation instructions, please see `README.rst <https://github.com/gregmedlock/Medusa/blob/development/README.rst>`_.
 
 
