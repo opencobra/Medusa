@@ -42,6 +42,15 @@ def test_fba_return_dims():
         assert rows == len(ensemble.members)
         assert columns == len(ensemble.base_model.reactions)
 
+def test_fba_multiprocessing():
+        ensemble = construct_mixed_ensemble()
+        fba_fluxes_multiprocess = optimize_ensemble(ensemble, num_processes = 2)
+        fba_fluxes_single = optimize_ensemble(ensemble, num_processes = 1)
+        rows = fba_fluxes.shape[0]
+        columns = fba_fluxes.shape[1]
+        assert fba_fluxes_single.shape[0] == fba_fluxes_multiprocess.shape[0]
+        assert fba_fluxes_single.shape[1] == fba_fluxes_multiprocess.shape[1]
+
 def test_fba_single_return():
         # test return of flux values for a single reaction
         ensemble = construct_textbook_ensemble()
