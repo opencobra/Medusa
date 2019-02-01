@@ -1,10 +1,40 @@
 
 from __future__ import absolute_import
+import multiprocessing
 
 from pandas import DataFrame
 from random import sample
 
-def optimize_ensemble(ensemble,return_flux=None,num_models=None,specific_models=None,**kwargs):
+from builtins import dict, map
+from functools import partial
+
+from cobra import Reaction
+
+
+def _optimize_ensemble(ensemble, return_flux, member_id, **kwargs):
+    ensemble.set_state(member_id)
+    ensemble.base_model.optimize(**kwargs)
+    flux_dict = {rxn:ensemble.base_model.reactions.get_by_id(rxn).flux
+                        for rxn in return_flux}
+    return (member_id, flux_dict, ensemble.base_model.solver.status)
+
+
+def _optimize_ensemble_worker(member_id):
+    global _ensemble
+    global _return_flux
+    return _optimize_ensemble(_ensemble, _return_flux, member_id)
+
+
+def _init_worker(ensemble, return_flux):
+    global _ensemble
+    global _return_flux
+    _ensemble = ensemble
+    _return_flux = return_flux
+
+
+def optimize_ensemble(ensemble, return_flux = None, num_models = None,
+                        specific_models = None, num_processes = None,
+                        **kwargs):
     '''
     Performs flux balance analysis (FBA) on models within an ensemble.
 
@@ -27,6 +57,11 @@ def optimize_ensemble(ensemble,return_flux=None,num_models=None,specific_models=
         will be performed. If None, all models will be selected (default), or
         num_models will be randomly sampled and selected. Cannot be passed
         concurrently with num_models.
+    num_processes : int, optional
+        An integer corresponding to the number of processes (i.e. cores) to
+        use. Using more cores will speed up computation, but will have a larger
+        memory footprint because the ensemble object must be temporarily
+        copied for each additional core used. If None, one core is used.
 
     Returns
     -------
@@ -35,29 +70,60 @@ def optimize_ensemble(ensemble,return_flux=None,num_models=None,specific_models=
         ensemble, and each column represents a reaction for which flux values
         are returned.
     '''
-
     if not num_models:
         num_models = len(ensemble.members)
+
+    if not return_flux:
+        return_flux = [rxn.id for rxn in ensemble.base_model.reactions]
 
     if isinstance(return_flux,str):
         return_flux = [return_flux]
 
-    flux_dict = {}
-    return_vals = {}
+    if isinstance(return_flux[0],Reaction):
+        return_flux = [rxn.id for rxn in return_flux]
+
+    if num_processes is None:
+        num_processes = 1
+
     if specific_models:
         model_list = specific_models
-    else:
+    elif len(ensemble.members) > num_models:
         model_list = sample(ensemble.members,num_models)
-    with ensemble.base_model:
-        for model in model_list:
-            ensemble.set_state(model)
-            ensemble.base_model.optimize(**kwargs)
-            flux_dict[model] = {rxn.id:rxn.flux for rxn in ensemble.base_model.reactions}
-    if return_flux:
-        for model in flux_dict.keys():
-            return_vals[model] = {rxn_id:flux_dict[model][rxn_id] for rxn_id in return_flux}
     else:
-        return_vals = flux_dict
+        model_list = ensemble.members
 
-    return_vals = DataFrame(return_vals).transpose()
+
+    # Can't have fewer ensemble members than processes
+    num_processes = min(num_processes, num_models)
+
+    def extract_results(result_iter):
+        return {member_id:flux_dict for
+                (member_id, flux_dict, status) in result_iter}
+
+    if num_processes > 1:
+        # create worker
+        worker = _optimize_ensemble_worker
+
+        # determine chunk size
+        chunk_size = num_models // num_processes
+
+        pool = multiprocessing.Pool(
+            num_processes,
+            initializer = _init_worker,
+            initargs = (ensemble, return_flux)
+        )
+
+        results = extract_results(pool.imap_unordered(
+            worker,
+            model_list,
+            chunksize = chunk_size
+        ))
+        pool.close()
+        pool.join()
+    else:
+        worker = _optimize_ensemble
+        results = extract_results(map(
+            partial(worker, ensemble, return_flux), model_list))
+
+    return_vals = DataFrame(results).transpose()
     return return_vals

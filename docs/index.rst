@@ -29,6 +29,7 @@ Index
     
 **Examples**
 
+* :doc:`parallel_fba`
 * :doc:`machine_learning`
 * :doc:`stats_compare`
 * :doc:`assess_ROC`
@@ -38,6 +39,7 @@ Index
     :hidden:
     :caption: Examples
     
+    parallel_fba
     machine_learning
     stats_compare
     assess_ROC
