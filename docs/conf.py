@@ -39,10 +39,11 @@ release = '0.1.3'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
+    'autoapi.extension',
     'sphinx.ext.coverage',
     'sphinx.ext.imgmath',
-    'nbsphinx'
+    'nbsphinx',
+    'sphinx.ext.napoleon'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -67,9 +68,9 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 
-                    'Thumbs.db', 
-                    '.DS_Store', 
+exclude_patterns = ['_build',
+                    'Thumbs.db',
+                    '.DS_Store',
                     '.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
@@ -179,5 +180,15 @@ epub_title = project
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ['search.html']
 
+
+# -- Options for autoapi extension -------------------------------------------
+
+# For documenting Python code
+autoapi_type = 'python'
+autoapi_dirs = ['../medusa/']
+autoapi_ignore = ['*.tox/*','*-checkpoint*','*/docs/*','*setup.py']
+
+# Napoleon settings
+napoleon_numpy_docstring = True
 
 # -- Extension configuration -------------------------------------------------
