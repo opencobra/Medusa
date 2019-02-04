@@ -5,3 +5,6 @@ dist/
 
 # compiled python files
 *.pyc
+
+# jupyter checkpoints
+.ipynb_checkpoints
