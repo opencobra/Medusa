@@ -10,6 +10,8 @@ from functools import partial
 
 from cobra import Reaction
 
+from medusa import Member
+
 
 def _optimize_ensemble(ensemble, return_flux, member_id, **kwargs):
     ensemble.set_state(member_id)
@@ -86,11 +88,16 @@ def optimize_ensemble(ensemble, return_flux = None, num_models = None,
         num_processes = 1
 
     if specific_models:
-        model_list = specific_models
+        # If member objects were passed, convert to member.id
+        if isinstance(specific_models[0],Member):
+            model_list = [member.id for member in specific_models]
+        else:
+            model_list = specific_models
     elif len(ensemble.members) > num_models:
-        model_list = sample(ensemble.members,num_models)
+        model_list = sample([member.id for member in ensemble.members],
+                            num_models)
     else:
-        model_list = ensemble.members
+        model_list = [member.id for member in ensemble.members]
 
 
     # Can't have fewer ensemble members than processes
