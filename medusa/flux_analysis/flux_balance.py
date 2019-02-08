@@ -10,7 +10,7 @@ from functools import partial
 
 from cobra import Reaction
 
-from medusa import Member
+from medusa.core.member import Member
 
 
 def _optimize_ensemble(ensemble, return_flux, member_id, **kwargs):
