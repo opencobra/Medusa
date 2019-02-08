@@ -41,6 +41,8 @@ def test_fba_return_dims():
         columns = fba_fluxes.shape[1]
         assert rows == len(ensemble.members)
         assert columns == len(ensemble.base_model.reactions)
+        # index of the results should be a str, NOT a medusa.Member object
+        assert isinstance(fba_fluxes.index[0], str)
 
 def test_fba_multiprocessing():
         ensemble = construct_mixed_ensemble()
@@ -84,5 +86,5 @@ def test_fba_specific_models():
         assert rows == len(model_list)
         assert columns == len(ensemble.base_model.reactions)
 
-        assert rownames.contains(model1)
-        assert rownames.contains(model2)
+        assert rownames.contains(model1.id)
+        assert rownames.contains(model2.id)
