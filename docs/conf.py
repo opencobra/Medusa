@@ -187,7 +187,7 @@ epub_exclude_files = ['search.html']
 
 # For documenting Python code
 autoapi_type = 'python'
-autoapi_dirs = ['../medusa/']
+autoapi_dirs = ['..']
 autoapi_ignore = ['*.tox/*','*-checkpoint*','*/docs/*','*setup.py']
 
 # Napoleon settings
