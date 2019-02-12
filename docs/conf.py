@@ -40,6 +40,8 @@ release = '0.1.3'
 # ones.
 extensions = [
     'autoapi.extension',
+    'sphinx.ext.autodoc',
+    'sphinx.ext.inheritance_diagram',
     'sphinx.ext.coverage',
     'sphinx.ext.imgmath',
     'nbsphinx',
