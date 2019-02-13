@@ -12,9 +12,9 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
+import os
+import sys
+sys.path.insert(0, os.path.abspath('.'))
 
 
 # -- Project information -----------------------------------------------------
@@ -189,6 +189,9 @@ epub_exclude_files = ['search.html']
 autoapi_type = 'python'
 autoapi_dirs = ['..']
 autoapi_ignore = ['*.tox/*','*-checkpoint*','*/docs/*','*setup.py']
+autoapi_modules = {'medusa': None}
+
+
 
 # Napoleon settings
 napoleon_numpy_docstring = True
