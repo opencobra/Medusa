@@ -26,7 +26,7 @@ Index
 
     why
     install
-    
+
 **Examples**
 
 * :doc:`parallel_fba`
@@ -38,7 +38,7 @@ Index
     :maxdepth: 1
     :hidden:
     :caption: Examples
-    
+
     parallel_fba
     machine_learning
     stats_compare
@@ -56,7 +56,7 @@ Index
     :maxdepth: 1
     :hidden:
     :caption: User Guide
-    
+
     medusa_objects
     creating_ensemble
     simulating

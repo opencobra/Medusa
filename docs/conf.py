@@ -15,7 +15,6 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('.'))
-print(sys.path)
 
 # -- Project information -----------------------------------------------------
 
@@ -188,7 +187,12 @@ epub_exclude_files = ['search.html']
 # For documenting Python code
 autoapi_type = 'python'
 autoapi_dirs = ['..']
-autoapi_ignore = ['*.tox/*','*-checkpoint*','*setup.py']
+autoapi_ignore = ['*.tox/*',
+                '*-checkpoint*',
+                '*setup.py',
+                '*.ipynb',
+                '*conf.py',
+                '*update_test_files.py']
 autoapi_modules = {'medusa': None}
 
 
