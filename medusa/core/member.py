@@ -50,6 +50,6 @@ class Member(Object):
         # associated genes/metabolites
         model = self.ensemble.base_model.copy()
         inactive_rxns = [rxn for rxn in model.reactions if rxn.bounds == (0,0)]
-        model.remove_reactions(inactive_reactions, remove_orphans = True)
+        model.remove_reactions(inactive_rxns, remove_orphans = True)
 
         return model
