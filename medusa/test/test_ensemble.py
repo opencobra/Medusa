@@ -97,7 +97,7 @@ def test_extract_member():
     test_ensemble = construct_textbook_ensemble()
     original_model = create_test_model("textbook")
 
-    extracted_member = test_ensemble.extract_member(ensemble.members[0])
+    extracted_member = test_ensemble.extract_member(test_ensemble.members[0])
 
     # check that the original reactions were removed
     unique_feature_comps = set([
