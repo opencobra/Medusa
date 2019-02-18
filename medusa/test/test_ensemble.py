@@ -93,6 +93,22 @@ def test_mixed_ensemble_creation():
         assert feature.component_attribute in REACTION_ATTRIBUTES
         assert len(set(feature.states.values())) > 1
 
+def test_extract_member():
+    test_ensemble = construct_textbook_ensemble()
+    original_model = create_test_model("textbook")
+
+    extracted_member = test_ensemble.extract_member(ensemble.members[0])
+
+    # check that the original reactions were removed
+    unique_feature_comps = set([
+            feat.base_component for feat in test_ensemble.features])
+
+    for feature in test_ensemble.members[0].states.keys():
+        if test_ensemble.members[0].states[feature] == 0:
+            assert feature.base_component.id not in [
+                rxn.id for rxn in extracted_member.reactions]
+
+
 def test_pickle():
     test_ensemble = construct_mixed_ensemble()
 
