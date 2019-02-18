@@ -259,7 +259,7 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
     # get the list of reactions currently in the gapfiller, which are the ones
     # we will need to check for flux after solving the problem (e.g. these are
     # the reactions we are considering adding to the model)
-    get_fluxes = [rxn.id for rxn in gapfiller.reactions]
+    original_gapfiller_reactions = [rxn.id for rxn in gapfiller.reactions]
 
     # add the reactions from the model to the gapfiller, which are not
     # included in the pFBA formulation, and thus flux is not penalized
@@ -299,9 +299,34 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
 
     for cycle_num in range(0,output_ensemble_size):
         print("starting cycle number " + str(cycle_num))
+        get_fluxes = original_gapfiller_reactions
         cycle_reactions = set()
         original_coefficients = \
             gapfiller.objective.get_linear_coefficients(gapfiller.variables)
+
+        # adjust for random reaction removal
+        if remove_fraction > 0.0:
+            # sample the original reaction id's and select fraction of them
+            original_to_remove = random.sample(
+                            original_reaction_ids,
+                            math.floor(
+                                remove_fraction*len(original_reaction_ids)))
+            get_fluxes.extend(original_to_remove)
+
+            # Add the flux minimization penalty to the removed reactions
+            coefficients = (gapfiller.objective.
+                        get_linear_coefficients(gapfiller.variables).copy())
+            reaction_variables = (((gapfiller.reactions.get_by_id(rxn)
+                                    .forward_variable),
+                                    (gapfiller.reactions.get_by_id(rxn)
+                                    .reverse_variable))
+                                     for rxn in original_to_remove)
+            variables = chain(*reaction_variables)
+            for variable in variables:
+                 coefficients[variable] = 1.0
+            gapfiller.objective.set_linear_coefficients(coefficients)
+        else:
+            original_to_remove = []
 
         for condition in cycle_order[cycle_num]:
             # set the medium for this condition.
