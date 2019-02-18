@@ -29,3 +29,27 @@ class Member(Object):
         Object.__init__(self,identifier,name)
         self.ensemble = ensemble
         self.states = states
+
+    def to_model(self):
+        """
+        Generate a cobra.Model object with the exact state of this member.
+
+        The resulting cobra.Model does not contain any Metabolites, Genes,
+        or Reactions that were inactive in the member.
+
+        Returns
+        -------
+        model : cobra.Model
+            The extracted member as a cobrapy model.
+        """
+
+        # Set the state of the ensemble.base_model to represent this member
+        self.ensemble.set_state(self.id)
+
+        # copy the base model and remove any inactive reactions and
+        # associated genes/metabolites
+        model = self.ensemble.base_model.copy()
+        inactive_rxns = [rxn for rxn in model.reactions if rxn.bounds == (0,0)]
+        model.remove_reactions(inactive_rxns, remove_orphans = True)
+
+        return model

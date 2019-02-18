@@ -136,7 +136,17 @@ class Ensemble(Object):
 
 
     def set_state(self,member):
-        """Set the state of the base model to represent a single member
+        """Set the state of the base model to represent a single member.
+
+        Sets all features to the state for the provided member. Only
+        reaction states are currently implemented (e.g. GPRs as features
+        will not work)
+
+        Parameters
+        ----------
+        member : str or medusa.Member
+            The Member.id, or the Member object itself, to set the state
+            of the Ensemble.base_model to represent.
 
         """
         # if member was passed as an id, get the actual member object
@@ -164,3 +174,29 @@ class Ensemble(Object):
 
         with open(filename, "wb") as outfile:
             dump(self, outfile, protocol=4)
+
+    def extract_member(self, member):
+        """
+        Extract an individual member as a cobrapy model (cobra.Model), removing
+        any components associated with features that are inactive in member.
+
+        Provided as a more convenient option than medusa.Member.to_model(),
+        but is the exact same.
+
+        Parameters
+        ----------
+        member : str or medusa.Member
+            The Member.id, or the Member object itself, to be represented in
+            the cobrapy model output.
+
+        Returns
+        -------
+        model : cobra.Model
+            The extracted member as a cobrapy model.
+        """
+        # if member was passed as an id, get the actual member object
+        if isinstance(member, str):
+            member = self.members.get_by_id(member)
+
+        model = member.to_model()
+        return model
