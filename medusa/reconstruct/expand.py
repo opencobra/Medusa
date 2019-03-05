@@ -67,9 +67,6 @@ def gapfill_to_ensemble(model, iterations=1, universal=None, lower_bound=0.05,
     ensemble : medusa.core.Ensemble
         The ensemble object created from the gapfill solutions.
     """
-    # copy original objective to reassign after generating ensemble
-    original_coefficients = \
-            model.objective.get_linear_coefficients(model.variables).copy()
     gapfiller = GapFiller(model, universal=universal,
                           lower_bound=lower_bound, penalties=penalties,
                           demand_reactions=demand_reactions,
@@ -79,7 +76,7 @@ def gapfill_to_ensemble(model, iterations=1, universal=None, lower_bound=0.05,
     print("finished gap-filling. Constructing ensemble...")
     ensemble = _build_ensemble_from_gapfill_solutions(model,solutions,
                                                     universal=universal)
-    ensemble.base_model.objective.set_linear_coefficients(original_coefficients)
+    
     return ensemble
 
 def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
@@ -373,54 +370,6 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
         solutions.append(list(cycle_reactions))
         maintained_reactions.append(original_to_remove)
     return solutions, maintained_reactions, gapfiller
-
-
-def _integer_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
-                      universal=None, output_ensemble_size=0,
-                      lower_bound=0.05, penalties=False,
-                      remove_fraction = None,
-                      demand_reactions=False,
-                      exchange_reactions=False,
-                      integer_threshold=1E-6,
-                      solver="glpk"):
-
-    if remove_fraction:
-        raise NotImplementedError("Random removal of reactions is not"
-                            "supported for integer gapfill")
-    gapfiller = GapFiller(model, universal=universal,
-                          lower_bound=lower_bound, penalties=penalties,
-                          demand_reactions=demand_reactions,
-                          exchange_reactions=exchange_reactions,
-                          integer_threshold=integer_threshold)
-    original_costs = gapfiller.costs
-
-    solutions = []
-    for cycle_num in range(0,output_ensemble_size):
-        print("starting cycle number " + str(cycle_num))
-        cycle_reactions = set()
-        for condition in cycle_order[cycle_num]:
-            gapfiller.model.medium = phenotype_dict[condition]
-            # gapfill and get the solution. The 0 index is necessary because
-            # gapfill will return a list of lists; we are only taking the
-            # first (and only) list here.
-            gapfilled_reactions = gapfiller.fill()[0]
-            cycle_reactions = cycle_reactions | set(gapfilled_reactions)
-            # iterate through indicators, find those corresponding to the
-            # gapfilled reactions from any iteration within this cycle, and
-            # reset their cost to 0. Doing this for all reactions from any
-            # iteration within the cycle is necessary because cobrapy's
-            # gapfill function performs update_costs, which will reset costs
-            # and iteratively increase them; without this manual override
-            # performed here, costs for previous conditions within a cycle
-            # would revert to 1 instead of the desired 0
-            for reaction_indicator in [indicator for indicator
-                                        in gapfiller.indicators]:
-                if reaction_indicator.rxn_id in cycle_reactions:
-                    gapfiller.costs[reaction_indicator] = 0
-            gapfiller.model.objective.set_linear_coefficients(gapfiller.costs)
-        solutions.append(list(cycle_reactions))
-        gapfiller.model.objective.set_linear_coefficients(original_costs)
-    return solutions
 
 
 def _build_ensemble_from_gapfill_solutions(model,

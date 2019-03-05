@@ -31,9 +31,9 @@ def test_iterative_gapfill_from_binary_phenotypes():
     add_mets = []
     add_exchanges = []
     for met in list(biolog_base_dict.keys()):
-        try:
+        if met in [m.id for m in model.metabolites]:
             model.metabolites.get_by_id(met)
-        except:
+        else:
             print('no '+met)
             add_met = universal.metabolites.get_by_id(met).copy()
             add_mets.append(add_met)
@@ -42,9 +42,9 @@ def test_iterative_gapfill_from_binary_phenotypes():
 
     for met in list(biolog_base_dict.keys()):
         # Search for exchange reactions
-        try:
+        if 'EX_'+met in [rxn.id for rxn in model.reactions]:
             model.reactions.get_by_id('EX_'+met)
-        except:
+        else:
             add_met = model.metabolites.get_by_id(met)
             ex_rxn = Reaction('EX_' + met)
             ex_rxn.name = "Exchange reaction for " + met
@@ -61,9 +61,9 @@ def test_iterative_gapfill_from_binary_phenotypes():
     missing_exchanges = []
     media_dicts = {}
     for met_id in test_mod_pheno:
-        try:
+        if met in [m.id for m in model.metabolites]:
             model.metabolites.get_by_id(met_id)
-        except:
+        else:
             print(met_id + " was not in model, adding met and exchange reaction")
             met = universal.metabolites.get_by_id(met_id).copy()
             missing_mets.append(met)
@@ -78,37 +78,6 @@ def test_iterative_gapfill_from_binary_phenotypes():
         media_dicts[met_id]['EX_'+met_id] = 1000
     model.add_metabolites(missing_mets)
     model.add_reactions(missing_exchanges)
-
-    # identify transporters for each biolog component in the universal model
-    # and pick one that will enable transport in the gapfilling problem.
-    transporters_in_universal = [rxn for rxn in universal.reactions if len(rxn.compartments)>1]
-    for met in media_dicts.keys():
-        metabolite = model.metabolites.get_by_id(met)
-        base_met_id = met.split('_')[0]
-        rxns_with_metabolite = metabolite.reactions
-        transport = False
-        for rxn in rxns_with_metabolite:
-            metabolites = [met_in_rxn.id for met_in_rxn in rxn.metabolites]
-            if (base_met_id+'_e' in metabolites and base_met_id+'_c' in metabolites):
-                transport = True
-
-        pick_transporter = {}
-        if not transport:
-            print("missing transporter for " + metabolite.name)
-            for rxn in transporters_in_universal:
-                metabolites = [met_in_rxn.id for met_in_rxn in rxn.metabolites]
-                if (base_met_id+'_e' in metabolites and base_met_id+'_c' in metabolites):
-                    pick_transporter[met] = rxn.id
-
-    # Add the transporters to the model
-    transporters_to_add = list(pick_transporter.values())
-    transporter_list = []
-    for rxn in transporters_to_add:
-        transporter_list.append(universal.reactions.get_by_id(rxn).copy())
-    model.add_reactions(transporter_list)
-
-    # remove the added transporters from the universal model
-    universal.remove_reactions([universal.reactions.get_by_id(rxn) for rxn in transporters_to_add])
 
     # select a subset of the biolog conditions to perform gapfilling with
     sources = list(media_dicts.keys())
@@ -136,6 +105,11 @@ def test_iterative_gapfill_from_binary_phenotypes():
     # biolog condition
     ex_rxns = [rxn for rxn in ensemble.base_model.reactions \
                         if rxn.id.startswith('EX_')]
+
+    # set the objective, which might not be maintained when constructing
+    # the ensemble.
+    ensemble.base_model.objective = 'bio1'
+
     for source in sub_dict.keys():
         # close all exchange reactions
         for rxn in ex_rxns:
