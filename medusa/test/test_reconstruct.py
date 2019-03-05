@@ -61,7 +61,7 @@ def test_iterative_gapfill_from_binary_phenotypes():
     missing_exchanges = []
     media_dicts = {}
     for met_id in test_mod_pheno:
-        if met in [m.id for m in model.metabolites]:
+        if met_id in [m.id for m in model.metabolites]:
             model.metabolites.get_by_id(met_id)
         else:
             print(met_id + " was not in model, adding met and exchange reaction")
