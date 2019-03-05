@@ -67,6 +67,9 @@ def gapfill_to_ensemble(model, iterations=1, universal=None, lower_bound=0.05,
     ensemble : medusa.core.Ensemble
         The ensemble object created from the gapfill solutions.
     """
+    # copy original objective to reassign after generating ensemble
+    original_coefficients = \
+            model.objective.get_linear_coefficients(model.variables).copy()
     gapfiller = GapFiller(model, universal=universal,
                           lower_bound=lower_bound, penalties=penalties,
                           demand_reactions=demand_reactions,
@@ -76,7 +79,7 @@ def gapfill_to_ensemble(model, iterations=1, universal=None, lower_bound=0.05,
     print("finished gap-filling. Constructing ensemble...")
     ensemble = _build_ensemble_from_gapfill_solutions(model,solutions,
                                                     universal=universal)
-
+    ensemble.base_model.objective.set_linear_coefficients(original_coefficients)
     return ensemble
 
 def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
