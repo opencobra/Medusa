@@ -4,7 +4,7 @@ backcall==0.1.0
 bleach==3.0.2
 certifi==2018.10.15
 chardet==3.0.4
-cobra==0.13.4
+cobra==0.14.2
 cycler==0.10.0
 decorator==4.3.0
 depinfo==1.4.0

@@ -1,7 +1,9 @@
 
 import itertools
 import random
+import math
 from itertools import chain
+import time
 
 from optlang.interface import OPTIMAL
 
@@ -14,6 +16,7 @@ from cobra.util.solver import linear_reaction_coefficients
 from medusa.core.ensemble import Ensemble
 from medusa.core.feature import Feature
 from medusa.core.member import Member
+
 # functions for expanding existing models to generate an ensemble
 
 REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
@@ -82,11 +85,13 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
                                             iterations_per_condition=1,
                                             lower_bound=0.05,
                                             remove_fraction = 0.0,
+                                            remove_exceptions = [],
                                             penalties=None,
                                             exchange_reactions=False,
                                             demand_reactions=False,
                                             inclusion_threshold=1e-6,
-                                            exchange_prefix="EX_"):
+                                            exchange_prefix="EX_",
+                                            solver='glpk'):
     """
     Performs gapfilling on model, pulling reactions from universal.
     Any existing constraints on base_model are maintained during gapfilling, so
@@ -127,6 +132,11 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
         constructed, the number of members may be lower than
         output_ensemble_size if any duplicate solutions were found across
         cycles.
+    gapfill_type : string, "continuous"
+        The kind of gapfilling to perform. Only "continuous" is currently
+        implemented. Previous version allowed "integer", but this is
+        generally much too slow to be practical (but may be reimplemented
+        in the future given a compelling use case).
     iterations_per_condition : int, 1
         The number of gapfill solutions to return in each condition within each
         cycle. Currently only supports returning a single solution.
@@ -144,6 +154,10 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
         will have a random set of reactions removed prior to gapfilling, i.e.
         the reactions removed before gapfilling are NOT the same for all
         members.
+    remove_exceptions : list, []
+        The reactions to exclude from random reaction removal. The fraction of
+        reactions removed is calculated on the set of reactions remaining when
+        not considering these reactions.
     inclusion_threshold : float, 1e-6
         The threshold at which a value is considered non-zero (aka
         integrality threshold in the integer formulation, or the flux threshold
@@ -161,6 +175,9 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
         reactions. "EX_" is standard for modelSEED models. This will be
         updated to be more database-agnostic when cobrapy boundary
         determination is finalized for cobrapy version 1.0.
+    solver : string, "glpk"
+        The solver to use when gapfilling. Any cobrapy-compatible solver that
+        is set up to function with cobrapy will work.
 
     Returns
     -------
@@ -168,8 +185,8 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
         list of lists; each list contains a gapfill solution for a single
         cycle. Number of lists is equal to output_ensemble_size.
     """
-    if gapfill_type not in ["integer","continuous"]:
-        raise ValueError("only gapfill types of integer and continuous"
+    if gapfill_type not in ["continuous"]:
+        raise ValueError("only gapfill types of continuous"
                          "are supported")
 
     # Check that all exchange reactions exist in base model. If not, raise an
@@ -201,19 +218,8 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
     # our strategy is to reduce the cost for the reactions returned by the
     # previous solution to 0, such that they are automatically included in
     # the model for the next condition.
-    if gapfill_type is "integer":
-        solutions =  _integer_iterative_binary_gapfill(model,
-                              phenotype_dict,
-                              cycle_order,
-                              universal=universal,
-                              output_ensemble_size=output_ensemble_size,
-                              lower_bound=lower_bound,
-                              penalties=penalties,
-                              demand_reactions=demand_reactions,
-                              exchange_reactions=exchange_reactions,
-                              integer_threshold=inclusion_threshold)
-    elif gapfill_type is "continuous":
-        solutions = _continuous_iterative_binary_gapfill(model,
+    if gapfill_type is "continuous":
+        solutions, maintained_reactions, gapfiller = _continuous_iterative_binary_gapfill(model,
                               phenotype_dict,
                               cycle_order,
                               universal=universal,
@@ -221,23 +227,30 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
                               lower_bound=lower_bound,
                               penalties=penalties,
                               remove_fraction=remove_fraction,
+                              remove_exceptions=remove_exceptions,
                               demand_reactions=demand_reactions,
                               exchange_reactions=exchange_reactions,
                               flux_cutoff=inclusion_threshold,
-                              exchange_prefix='EX_')
+                              exchange_prefix='EX_',
+                              solver=solver)
 
-    ensemble =_build_ensemble_from_gapfill_solutions(model,solutions,
-                                                    universal=universal)
+    ensemble =_build_ensemble_from_gapfill_solutions(model,
+                                                    solutions,
+                                                    maintained_reactions,
+                                                    universal=gapfiller)
     return ensemble
 
 def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
                       universal=None, output_ensemble_size=1,
                       lower_bound=0.05, penalties=None,
                       remove_fraction = 0.0,
+                      remove_exceptions = [],
                       demand_reactions=False,
                       exchange_reactions=False,
                       flux_cutoff=1E-8,
-                      exchange_prefix='EX_'):
+                      exchange_prefix='EX_',
+                      solver="glpk"):
+
     if exchange_reactions:
         raise NotImplementedError("Inclusion of new exchange reactions is not"
                             "supported for continuous gapfill")
@@ -245,10 +258,12 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
         raise NotImplementedError("Inclusion of demand reactions is not"
                             "supported for continuous gapfill")
 
-    solutions = []
+    solutions = [] # list of lists for gapfill solutions
+    maintained_reactions = [] # list of lists for reactions maintained in model
     gapfiller = universal.copy()
 
-
+    # set the solver for the gapfill object
+    gapfiller.solver = solver
 
     # get the original objective from the model being gapfilled
     model_to_gapfill = model.copy()
@@ -258,140 +273,93 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
     original_objective = {rxn.id:original_objective[rxn] for rxn
                             in original_objective.keys()}
 
-    # get the reactions in the original model, which need to be removed from
-    # the universal if present. This cannot catch identical reactions that do
-    # not share IDs, so make sure your model and universal are in the same
-    # namespace.
-    rxns_to_remove = [rxn for rxn in gapfiller.reactions if rxn.id in \
-                        [rxn.id for rxn in model_to_gapfill.reactions]]
-    gapfiller.remove_reactions(rxns_to_remove)
+    # remove reactions from the gapfiller that are present in the model
+    # to be gapfilled
+    gapfiller.remove_reactions([rxn for rxn in gapfiller.reactions if rxn.id in \
+                        [rxn.id for rxn in model_to_gapfill.reactions]])
 
-    # get the list of reactions currently in the gapfiller, which are the ones
-    # we will need to check for flux after solving the problem (e.g. these are
-    # the reactions we are considering adding to the model)
-    original_gapfiller_reactions = [rxn.id for rxn in gapfiller.reactions]
-
-    # add the reactions from the model to the gapfiller, which are not
-    # included in the pFBA formulation, and thus flux is not penalized
-    # through them.
-    original_model_reactions = [rxn.copy() for rxn
+    # add the reactions from the model to the gapfiller
+    # Get IDs for later use
+    original_model_reaction_ids = [reaction.id for reaction
                                 in model_to_gapfill.reactions]
-    gapfiller.add_reactions(original_model_reactions)
-    original_reaction_ids = [reaction.id for reaction
-                                in original_model_reactions]
-
+    gapfiller.add_reactions([rxn.copy() for rxn
+                                in model_to_gapfill.reactions])
 
     # Add the pFBA constraints and objective (minimizes sum of fluxes)
     add_pfba(gapfiller)
 
-    # set the linear coefficients for reactions in the original model to 0
-    coefficients = (gapfiller.objective
-                    .get_linear_coefficients(gapfiller.variables))
-    reaction_variables = (((gapfiller.reactions.get_by_id(reaction)
-                            .forward_variable),
-                           (gapfiller.reactions.get_by_id(reaction)
-                            .reverse_variable))
-                            for reaction in original_reaction_ids)
-    variables = chain(*reaction_variables)
-    for variable in variables:
-        coefficients[variable] = 0.0
-    gapfiller.objective.set_linear_coefficients(coefficients)
-
-    ## set a constraint on flux through the original objective
+    # set a constraint on flux through the original objective
     for reaction in original_objective.keys():
         print("Constraining lower bound for " + reaction)
         gapfiller.reactions.get_by_id(reaction).lower_bound = lower_bound
 
+    # Close the lower bound on exchange reactions
     exchange_reactions = [rxn for rxn in gapfiller.reactions if\
                             rxn.id.startswith(exchange_prefix)]
     for rxn in exchange_reactions:
-        rxn.lower_bound = 0
+        rxn.bounds = (0,rxn.upper_bound)
+
+    original_coefficients = \
+            gapfiller.objective.get_linear_coefficients(gapfiller.variables).copy()
 
     for cycle_num in range(0,output_ensemble_size):
         print("starting cycle number " + str(cycle_num))
-        get_fluxes = original_gapfiller_reactions
         cycle_reactions = set()
-        original_coefficients = \
-            gapfiller.objective.get_linear_coefficients(gapfiller.variables)
 
-        # adjust for random reaction removal
         if remove_fraction > 0.0:
-            # sample the original reaction id's and select fraction of them
-            original_to_remove = random.sample(
-                            original_reaction_ids,
-                            math.floor(
-                                remove_fraction*len(original_reaction_ids)))
-            get_fluxes.extend(original_to_remove)
+            # sample the original reaction id's and select fraction of them,
+            # removing reactions in remove_exceptions and the old objective
+            removable = list(set(original_model_reaction_ids) -
+                             set(remove_exceptions) -
+                             set(original_objective.keys()))
 
-            # Add the flux minimization penalty to the removed reactions
-            coefficients = (gapfiller.objective.
-                        get_linear_coefficients(gapfiller.variables).copy())
-            reaction_variables = (((gapfiller.reactions.get_by_id(rxn)
-                                    .forward_variable),
-                                    (gapfiller.reactions.get_by_id(rxn)
-                                    .reverse_variable))
-                                     for rxn in original_to_remove)
-            variables = chain(*reaction_variables)
-            for variable in variables:
-                 coefficients[variable] = 1.0
-            gapfiller.objective.set_linear_coefficients(coefficients)
+            original_to_remove = random.sample(
+                    removable,
+                    math.floor(
+                    (1.0 - remove_fraction)*len(removable)))
+            # add the remove_exceptions and objective reactions back to
+            # original_to_remove so that the penalties on them get removed.
+            original_to_remove.extend(remove_exceptions)
+            original_to_remove.extend(original_objective.keys())
         else:
-            original_to_remove = []
+            #otherwise, remove the pentalty for all reactions in the model
+            original_to_remove = original_model_reaction_ids
+
+        # Remove penalty
+        _set_coefficients(gapfiller, original_to_remove, 0.0)
+        gapfiller.slim_optimize()
+        # get reaction ids we need to check for flux after optimizing
+        get_fluxes = list(set([r.id for r in gapfiller.reactions]) -
+                                set(original_to_remove))
 
         for condition in cycle_order[cycle_num]:
             # set the medium for this condition.
-            for ex_rxn in phenotype_dict[condition].keys():
-                gapfiller.reactions.get_by_id(ex_rxn).lower_bound = \
-                    -1.0*phenotype_dict[condition][ex_rxn]
-                gapfiller.reactions.get_by_id(ex_rxn).upper_bound = \
-                    1.0*phenotype_dict[condition][ex_rxn]
+            _set_medium(gapfiller, phenotype_dict[condition], exchange_prefix)
 
             # gapfill and get the solution
             iteration_solution = gapfiller.optimize()
+            filtered_solution = {rxn:iteration_solution.fluxes[rxn] for rxn in\
+               get_fluxes if abs(iteration_solution.fluxes[rxn]) > flux_cutoff}
 
-            filtered_solution = {rxn:iteration_solution.x_dict[rxn] for rxn in\
-               get_fluxes if abs(iteration_solution.x_dict[rxn]) > flux_cutoff}
-
-            add_rxns = [universal.reactions.get_by_id(rxn).copy() for \
-                                            rxn in filtered_solution.keys()]
-            # combine the solution from this iteration with all others within
-            # the current cycle
+            # combine solution with those from previous iterations within cycle
             cycle_reactions = cycle_reactions | \
-                                set([rxn.id for rxn in add_rxns])
+                            set([rxn for rxn in filtered_solution.keys()])
+            # Get the reaction objects to be added for model validation
+            validate_reactions = [gapfiller.reactions.get_by_id(r).copy() for r in
+                                    cycle_reactions]
 
-            # validate that the proposed solution restores flux through the
-            # objective in the original model
-            # set the bounds on the original model to represent media
-            # and validate the gapfill solution
-            for ex_rxn in [rxn for rxn in model_to_gapfill.reactions if \
-                            rxn.id.startswith(exchange_prefix)]:
-                ex_rxn.lower_bound = 0
-            for ex_rxn in phenotype_dict[condition].keys():
-                model_to_gapfill.reactions.get_by_id(ex_rxn).lower_bound = \
-                    -1.0*phenotype_dict[condition][ex_rxn]
-                model_to_gapfill.reactions.get_by_id(ex_rxn).upper_bound = \
-                    1.0*phenotype_dict[condition][ex_rxn]
-            if not validate(model_to_gapfill,\
-                            [universal.reactions.get_by_id(rxn).copy() for \
-                            rxn in cycle_reactions],lower_bound):
+            # set media conditions for the model to be gapfilled
+            _set_medium(model_to_gapfill, phenotype_dict[condition], exchange_prefix)
+            if not validate(model_to_gapfill,
+                            validate_reactions,
+                            original_to_remove,
+                            lower_bound):
                 raise RuntimeError('Failed to validate gapfilled model, '
                                     'try lowering the flux_cutoff through '
                                     'inclusion_threshold')
-
             # remove the flux minimization penalty on the gapfilled reactions
-            coefficients = (gapfiller.objective.
-                        get_linear_coefficients(gapfiller.variables).copy())
-            reaction_variables = (((gapfiller.reactions.get_by_id(rxn)
-                                    .forward_variable),
-                                    (gapfiller.reactions.get_by_id(rxn)
-                                    .reverse_variable))
-                                     for rxn in cycle_reactions)
-            variables = chain(*reaction_variables)
-            for variable in variables:
-                 coefficients[variable] = 0.0
-
-            gapfiller.objective.set_linear_coefficients(coefficients)
-            check = gapfiller.slim_optimize() # optimizing might be necessary
+            _set_coefficients(gapfiller, filtered_solution.keys(), 0.0)
+            #check = gapfiller.slim_optimize() # optimizing might be necessary
             # to update coefficients.
 
             # reset the media condition
@@ -400,7 +368,8 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
 
         gapfiller.objective.set_linear_coefficients(original_coefficients)
         solutions.append(list(cycle_reactions))
-    return solutions
+        maintained_reactions.append(original_to_remove)
+    return solutions, maintained_reactions, gapfiller
 
 
 def _integer_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
@@ -409,7 +378,8 @@ def _integer_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
                       remove_fraction = None,
                       demand_reactions=False,
                       exchange_reactions=False,
-                      integer_threshold=1E-6):
+                      integer_threshold=1E-6,
+                      solver="glpk"):
 
     if remove_fraction:
         raise NotImplementedError("Random removal of reactions is not"
@@ -450,7 +420,10 @@ def _integer_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
     return solutions
 
 
-def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
+def _build_ensemble_from_gapfill_solutions(model,
+                                           solutions,
+                                           maintained_reactions,
+                                           universal=None):
 
     ensemble = Ensemble(identifier=model.id,name=model.name)
     ensemble.base_model = model.copy()
@@ -461,9 +434,32 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
     i = 0
     for solution in solutions:
         solution_id = model.id + '_gapfilled_' + str(i)
-        solution_as_rxn_objs = [universal.reactions.get_by_id(rxn).copy()
-                                    for rxn in solution]
-        solution_dict[solution_id] = DictList() + solution_as_rxn_objs
+
+        # Add the maintained reactions to the solution.
+        solution.extend(maintained_reactions[i])
+
+        # For any reaction in the solution missing from universal,
+        # remove it from the model and add it to universal. This is done for
+        # reactions that were part of a removal fraction, allowing us to call
+        # universal.reactions.get_by_id() rather than constantly checking
+        # whether a reaction came fom the model or the universal.
+        add_to_universal = []
+        remove_from_model = []
+        solutions_as_rxn_objs = []
+        for rxn_id in solution:
+            if rxn_id in [r.id for r in model.reactions]:
+                add_to_universal.append(model.reactions.get_by_id(rxn_id).copy())
+                remove_from_model.append(rxn_id)
+            else:
+                solutions_as_rxn_objs.append(universal.reactions.get_by_id(rxn_id).copy())
+
+        universal.add_reactions([rxn for rxn in add_to_universal
+                                if rxn.id not in
+                                    [r.id for r in universal.reactions]])
+        ensemble.base_model.remove_reactions(remove_from_model, remove_orphans = True)
+
+        solutions_as_rxn_objs.extend(add_to_universal)
+        solution_dict[solution_id] = DictList() + solutions_as_rxn_objs
         i += 1
 
     # scan through other members and remove them if they are identical.
@@ -515,13 +511,16 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
     # add reaction objects to the base model for all reactions
     all_reactions_as_objects = [universal.reactions.get_by_id(rxn).copy()
                                 for rxn in all_reactions]
+    all_reactions_to_add = [rxn for rxn in all_reactions_as_objects
+                            if rxn.id not in
+                                [r.id for r in ensemble.base_model.reactions]]
     ensemble.base_model.add_reactions(all_reactions_as_objects)
 
     # add metabolite objects to the base model for all new metabolites from
-    # the new reactions
-    mets = [x.metabolites for x in all_reactions_as_objects]
-    all_keys = set().union(*(d.keys() for d in mets))
-    ensemble.base_model.add_metabolites(all_keys)
+    # the new reactions -- NOT NECESSARY WITH NEW COBRAPY VERSIONS
+    # mets = [x.metabolites for x in all_reactions_as_objects]
+    # all_keys = set().union(*(d.keys() for d in mets))
+    # ensemble.base_model.add_metabolites(all_keys)
 
     print('building features...')
     # generate features for the reactions that vary across solutions and add
@@ -542,7 +541,7 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
             # get the states for this feature as {member.id:value}
             states = {}
             for member_id in solution_dict.keys():
-                # get the reaction and it's value for the attribute
+                # get the reaction and its value for the attribute
                 if reaction.id in [rxn.id for rxn in solution_dict[member_id]]:
                     rxn_obj = solution_dict[member_id].get_by_id(reaction.id)
                     states[member_id] = getattr(rxn_obj,attribute)
@@ -570,12 +569,72 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
 
     return ensemble
 
-def validate(original_model, reactions, lower_bound):
-        with original_model as model:
-            model.add_reactions(reactions)
-            mets = [x.metabolites for x in reactions]
-            all_keys = set().union(*(d.keys() for d in mets))
-            model.add_metabolites(all_keys)
-            model.slim_optimize()
-            return (model.solver.status == OPTIMAL and
-                    model.solver.objective.value >= lower_bound)
+def validate(original_model, reactions, original_to_remove, lower_bound):
+    with original_model as model:
+        # get any reactions that were inactivated randomly
+        # NOTE: original_to_remove are the original reactions that we
+        # remove the gapfill penalty for, NOT those that were removed
+        # from the model.
+
+        keep = set([r.id for r in model.reactions]) & set(set(original_to_remove) | set([r.id for r in reactions]))
+        remove = set([r.id for r in model.reactions]) - keep
+        add = set([r.id for r in reactions]) - keep
+
+        model.remove_reactions(remove)
+        model.add_reactions([r for r in reactions if r.id in add])
+        model.slim_optimize()
+        return (model.solver.status == OPTIMAL and
+                model.solver.objective.value >= lower_bound)
+
+def _set_coefficients(model, reactions, coefficient):
+    """
+    Helper function to set the coefficients for a list of reactions.
+
+    Modifies the model in place.
+
+    Parameters
+    ----------
+    model : cobra.Model
+        model that the coefficients should be modified for (e.g. the
+        model being gapfilled).
+    reactions : list
+        list of reaction ids to adjust coefficients for.
+    coefficient : float
+        Value to set the coefficient to.
+    """
+
+    coefficients = (model.objective.
+                get_linear_coefficients(model.variables).copy())
+    reaction_variables = (((model.reactions.get_by_id(rxn)
+                            .forward_variable),
+                            (model.reactions.get_by_id(rxn)
+                            .reverse_variable))
+                             for rxn in reactions)
+    variables = chain(*reaction_variables)
+    for variable in variables:
+         coefficients[variable] = 0.0
+    model.objective.set_linear_coefficients(coefficients)
+
+def _set_medium(model, condition, exchange_prefix):
+    """
+    Helper function to set the media conditions. Slightly faster
+    than using model.medium.
+
+    Parameters
+    ----------
+    model : cobra.Model
+        Model to adjust the medium for.
+    condition : dict
+        Dictionary mapping exchange reactions to the absolute value
+        of their uptake rate.
+    exchange_prefix : string
+        The prefix to search reaction ids for when closing
+        other exchange reactions.
+    """
+    for ex_rxn in [rxn for rxn in model.reactions if \
+                    rxn.id.startswith(exchange_prefix)]:
+        ex_rxn.bounds = (0,ex_rxn.upper_bound)
+    for ex_rxn in condition.keys():
+        model.reactions.get_by_id(ex_rxn).bounds = \
+            (-1.0*condition[ex_rxn],
+            1.0*condition[ex_rxn])
