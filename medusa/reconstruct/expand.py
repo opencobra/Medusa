@@ -314,8 +314,8 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
             # gapfill and get the solution
             iteration_solution = gapfiller.optimize()
 
-            filtered_solution = {rxn:iteration_solution.x_dict[rxn] for rxn in\
-               get_fluxes if abs(iteration_solution.x_dict[rxn]) > flux_cutoff}
+            filtered_solution = {rxn:iteration_solution.fluxes[rxn] for rxn in\
+               get_fluxes if abs(iteration_solution.fluxes[rxn]) > flux_cutoff}
 
             add_rxns = [universal.reactions.get_by_id(rxn).copy() for \
                                             rxn in filtered_solution.keys()]
