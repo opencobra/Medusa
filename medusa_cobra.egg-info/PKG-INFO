@@ -1,0 +1,16 @@
+Metadata-Version: 1.1
+Name: medusa-cobra
+Version: 0.2
+Summary: Ensemble modeling using constraint-based reconstruction and analysis (COBRA)
+Home-page: https://github.com/gregmedlock/Medusa
+Author: Gregory Medlock
+Author-email: gmedlo@gmail.com
+License: MIT
+Download-URL: https://github.com/gregmedlock/Medusa/archive/0.2.tar.gz
+Description: Medusa extends various algorithms and analyses used in the COBRA field to ensemble-scale, and provides a high-level user interface for analysis, visualization, and interpreting simulation results.
+Keywords: computational biology,systems biology,biology
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
