@@ -1,3 +1,6 @@
+from __future__ import print_function
+from __future__ import absolute_import
+
 import medusa
 import cobra
 import cobra.test
@@ -17,8 +20,6 @@ import itertools
 import logging
 LOGGER = logging.getLogger(__name__)
 
-from __future__ import print_function
-from __future__ import absolute_import
 from sys import getsizeof
 from copy import deepcopy
 from collections import defaultdict
