@@ -4,12 +4,16 @@ import random
 from itertools import chain
 
 from optlang.interface import OPTIMAL
+from optlang.symbolics import Zero
 
 from cobra.flux_analysis.gapfilling import GapFiller
 from cobra.flux_analysis.parsimonious import add_pfba
+from cobra.flux_analysis import find_blocked_reactions
+from cobra import sampling
 from cobra.core import DictList
 
 from cobra.util.solver import linear_reaction_coefficients
+from cobra.util import solver as sutil
 
 from medusa.core.ensemble import Ensemble
 from medusa.core.feature import Feature
@@ -19,9 +23,12 @@ from medusa.core.member import Member
 REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
 MISSING_ATTRIBUTE_DEFAULT = {'lower_bound':0,'upper_bound':0}
 
+GAPFILL_METHODS = ["integer","continuous"]
+
 def gapfill_to_ensemble(model, iterations=1, universal=None, lower_bound=0.05,
-                 penalties=None, exchange_reactions=False,
-                 demand_reactions=False, integer_threshold=1e-6):
+                 gapfill_type='continuous', penalties=None, 
+                 exchange_reactions=False, demand_reactions=False,
+                 integer_threshold=1e-6, sampler_method='optgp'):
     """
     Performs gapfilling on model, pulling reactions from universal.
     Any existing constraints on base_model are maintained during gapfilling, so
@@ -58,19 +65,40 @@ def gapfill_to_ensemble(model, iterations=1, universal=None, lower_bound=0.05,
         in the model.
     demand_reactions : bool, False
         Consider adding demand reactions for all metabolites.
+    sampler_method : String, 'optgp'
+        For continuous pFBA-based gapfilling, specifies the sampling method
+        to be used. Takes any valid sampling method implemented in cobrapy,
+        e.g., 'optgp' or 'achr'.
 
     Returns
     -------
     ensemble : medusa.core.Ensemble
         The ensemble object created from the gapfill solutions.
     """
-    gapfiller = GapFiller(model, universal=universal,
-                          lower_bound=lower_bound, penalties=penalties,
-                          demand_reactions=demand_reactions,
-                          exchange_reactions=exchange_reactions,
-                          integer_threshold=integer_threshold)
-    solutions = gapfiller.fill(iterations=iterations)
-    print("finished gap-filling. Constructing ensemble...")
+
+    if gapfill_type not in GAPFILL_METHODS:
+        raise ValueError("gapfill_type \'{0}\' is not supported."
+                         "Must be one of {1}.".format(
+                         gapfill_type, GAPFILL_METHODS))
+
+    if gapfill_type == "integer":
+        gapfiller = GapFiller(model, universal=universal,
+                              lower_bound=lower_bound, penalties=penalties,
+                              demand_reactions=demand_reactions,
+                              exchange_reactions=exchange_reactions,
+                              integer_threshold=integer_threshold)
+        solutions = gapfiller.fill(iterations=iterations)
+    
+    elif gapfill_type == "continuous":
+        print("Constructing pFBA gapfiller")
+        gapfiller = PfbaGapFiller(model, universal=universal,
+                              lower_bound=lower_bound, penalties=penalties,
+                              demand_reactions=demand_reactions,
+                              exchange_reactions=exchange_reactions)
+        solutions = gapfiller.fill(iterations=iterations,
+                                   sampler_method = sampler_method)
+
+    print("finished gapfilling. Constructing ensemble...")
     ensemble = _build_ensemble_from_gapfill_solutions(model,solutions,
                                                     universal=universal)
 
@@ -160,9 +188,10 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
         list of lists; each list contains a gapfill solution for a single
         cycle. Number of lists is equal to output_ensemble_size.
     """
-    if gapfill_type not in ["integer","continuous"]:
-        raise ValueError("only gapfill types of integer and continuous"
-                         "are supported")
+    if gapfill_type not in GAPFILL_METHODS:
+        raise ValueError("gapfill_type \'{0}\' is not supported."
+                         "Must be one of {1}.".format(
+                         gapfill_type, GAPFILL_METHODS))
 
     # Check that all exchange reactions exist in base model. If not, raise an
     # error.
@@ -237,7 +266,6 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
 
     solutions = []
     gapfiller = universal.copy()
-
 
 
     # get the original objective from the model being gapfilled
@@ -531,6 +559,187 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
     ensemble.members = members
 
     return ensemble
+
+class PfbaGapFiller(object):
+    def __init__(self, model, universal=None, lower_bound=0.05,
+                 penalties=None, exchange_reactions=False,
+                 demand_reactions=False, threshold=1e-8):
+        print("\tCopying original model and universal model")
+        self.original_model = model
+        self.lower_bound = lower_bound
+        self.model = model.copy()
+        #tolerances = self.model.solver.configuration.tolerances
+        self.universal = universal.copy() if universal else Model('universal')
+        self.penalties = dict(universal=1, exchange=100, demand=1)
+        if penalties is not None:
+            self.penalties.update(penalties)
+        self.extend_model(exchange_reactions, demand_reactions)
+        print("\tRemoving blocked reactions from the combined model "
+            "and universal")
+        self.prune_blocked_reactions()
+        #fix_objective_as_constraint(self.model, bound=lower_bound)
+        print("\tAdding pFBA objective")
+        add_pfba(self.model,lower_bound = lower_bound)
+        
+        # set the linear coefficients for reactions in the original model to 0
+        print("\tRemoving flux penalty from reactions in the original model")
+        coefficients = (self.model.objective
+                        .get_linear_coefficients(self.model.variables))
+        # get the original reactions from the model, excluding those that
+        # were always blocked even with the addition of the universal.
+        original_reaction_ids = [r.id for r in self.original_model.reactions
+                                if r.id in 
+                                [rxn.id for rxn in self.model.reactions]]
+        reaction_variables = (((self.model.reactions.get_by_id(reaction)
+                                .forward_variable),
+                               (self.model.reactions.get_by_id(reaction)
+                                .reverse_variable))
+                                for reaction in original_reaction_ids)
+        variables = chain(*reaction_variables)
+        for variable in variables:
+            coefficients[variable] = 0.0
+        self.model.objective.set_linear_coefficients(coefficients)
+
+
+
+    def extend_model(self, exchange_reactions=False, demand_reactions=True):
+        """Extend gapfilling model.
+        Add reactions from universal model and optionally exchange and
+        demand reactions for all metabolites in the model to perform
+        gapfilling on.
+        Parameters
+        ----------
+        exchange_reactions : bool
+            Consider adding exchange (uptake) reactions for all metabolites
+            in the model.
+        demand_reactions : bool
+            Consider adding demand reactions for all metabolites.
+        """
+        for rxn in self.universal.reactions:
+            rxn.gapfilling_type = 'universal'
+        new_metabolites = self.universal.metabolites.query(
+            lambda metabolite: metabolite not in self.model.metabolites
+                                                           )
+        self.model.add_metabolites(new_metabolites)
+        existing_exchanges = []
+        for rxn in self.universal.boundary:
+            existing_exchanges = existing_exchanges + \
+                [met.id for met in list(rxn.metabolites)]
+
+        for met in self.model.metabolites:
+            if exchange_reactions:
+                # check for exchange reaction in model already
+                if met.id not in existing_exchanges:
+                    rxn = self.universal.add_boundary(
+                        met, type='exchange_gapfill', lb=-1000, ub=0,
+                        reaction_id='EX_{}'.format(met.id))
+                    rxn.gapfilling_type = 'exchange'
+            if demand_reactions:
+                rxn = self.universal.add_boundary(
+                    met, type='demand_gapfill', lb=0, ub=1000,
+                    reaction_id='DM_{}'.format(met.id))
+                rxn.gapfilling_type = 'demand'
+
+        new_reactions = self.universal.reactions.query(
+            lambda reaction: reaction not in self.model.reactions
+        )
+        self.model.add_reactions(new_reactions)
+
+    def prune_blocked_reactions(self):
+        blocked = find_blocked_reactions(self.model)
+        self.model.remove_reactions(blocked)
+
+
+    def fill(self, iterations=1, threshold=None, sampler_method='optgp'):
+            print("\nBeginning gapfill")
+            if not threshold:
+                threshold = self.model.tolerance
+
+            # only get the fluxes for reactions that weren't in the original
+            # model
+            get_fluxes = [r.id for r in self.model.reactions if 
+                        r.id not in 
+                        [rxn.id for rxn in self.original_model.reactions]]
+
+            # if performing more than one iteration, generate a sampler
+            if iterations > 1:
+                print("\tGenerating samples")
+                samples = sampling.sample(self.model, 
+                                 iterations, 
+                                 method = sampler_method)
+                filtered_samples = samples > threshold
+
+                # reduce the samples to only reactions in get_fluxes
+                filtered_samples = filtered_samples[get_fluxes]
+
+                # collapse redundant rows
+                filtered_samples = filtered_samples.drop_duplicates()
+                # convert to list of lists with active reactions
+                filtered_solution = [
+                                    filtered_samples.columns[
+                                    filtered_samples.loc[index]].tolist()
+                                    for index in filtered_samples.index]
+                for solution in filtered_solution:
+                    if not validate(self.original_model,[
+                        self.model.reactions.get_by_id(rxn).copy() for
+                        rxn in solution]):
+                        raise RuntimeError('Failed to validate gapfilled model, '
+                                    'try lowering the flux_cutoff through '
+                                    'inclusion_threshold')
+
+            else:
+                iter_sol = self.model.optimize()
+                filtered_solution = [rxn for rxn in get_fluxes if 
+                                    abs(iter_sol.fluxes[rxn]) > threshold]
+                if not validate(self.original_model,
+                                    [self.model.reactions.get_by_id(rxn).copy()
+                                    for rxn in filtered_solution.keys()]):
+                    raise RuntimeError('Failed to validate gapfilled model, '
+                                    'try lowering the flux_cutoff through '
+                                    'inclusion_threshold')
+                filtered_solution = [filtered_solution] # list of lists
+                # to be consistent with iterations > 1 case.
+            
+            return filtered_solution
+
+
+
+def add_pfba(model, objective=None, fraction_of_optimum=1.0, lower_bound=None):
+    """Add pFBA objective modified for medusa
+    Add objective to minimize the summed flux of all reactions to the
+    current objective.
+    See Also
+    -------
+    pfba
+    Parameters
+    ----------
+    model : cobra.Model
+        The model to add the objective to
+    objective :
+        An objective to set in combination with the pFBA objective.
+    fraction_of_optimum : float
+        Fraction of optimum which must be maintained. The original objective
+        reaction is constrained to be greater than maximal_value *
+        fraction_of_optimum. Ignored if lower_bound is passed.
+    lower_bound : float
+        Lower bound on the former objective that must be maintained. The
+        original objective is constrained in the same manner as when
+        frasction_of_optimum is used. If used, fraction_of_optimum is ignored.
+    """
+    if objective is not None:
+        model.objective = objective
+    if model.solver.objective.name == '_pfba_objective':
+        raise ValueError('The model already has a pFBA objective.')
+    if lower_bound:
+        sutil.fix_objective_as_constraint(model, bound=lower_bound)
+    else:
+        sutil.fix_objective_as_constraint(model, fraction=fraction_of_optimum)
+    reaction_variables = ((rxn.forward_variable, rxn.reverse_variable)
+                          for rxn in model.reactions)
+    variables = chain(*reaction_variables)
+    model.objective = model.problem.Objective(
+        Zero, direction='min', sloppy=True, name="_pfba_objective")
+    model.objective.set_linear_coefficients({v: 1.0 for v in variables})
 
 def validate(original_model, reactions, lower_bound):
         with original_model as model:
