@@ -29,6 +29,9 @@ class Member(Object):
         Object.__init__(self,identifier,name)
         self.ensemble = ensemble
         self.states = states
+        # associate with the base model--this is necessary for _set_id_with_model
+        # to get triggered in the getter/setter architecture for cobra.Object
+        self._model = ensemble.base_model
 
     def to_model(self):
         """
@@ -53,3 +56,16 @@ class Member(Object):
         model.remove_reactions(inactive_rxns, remove_orphans = True)
 
         return model
+
+    def _set_id_with_model(self, value):
+        if value in self.ensemble.members:
+            raise ValueError("The ensemble already contains a member with"
+                             " the id:", value)
+        old_id = self._id
+        self._id = value
+        self.ensemble.members._generate_index()
+        
+        for feature in self.ensemble.features:
+            feature.states[self._id] = feature.states.pop(old_id)
+
+        
