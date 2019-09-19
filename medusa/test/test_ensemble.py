@@ -3,6 +3,8 @@ from medusa.core.ensemble import Ensemble
 
 from pickle import load
 
+import pytest
+
 REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
 MISSING_ATTRIBUTE_DEFAULT = {'lower_bound':0,'upper_bound':0}
 
@@ -107,6 +109,29 @@ def test_extract_member():
         if test_ensemble.members[0].states[feature] == 0:
             assert feature.base_component.id not in [
                 rxn.id for rxn in extracted_member.reactions]
+
+def test_update_member_id():
+    # updating the id on a member should update the index in members,
+    # the id in feature.states. Also, attempting to set the member id
+    # to an existing member should raise an error.
+
+    test_ensemble = construct_textbook_ensemble()
+    member1 = test_ensemble.members[0]
+    member2 = test_ensemble.members[1]
+
+    new_id = 'first_with_mod_id'
+    member1.id = new_id
+    assert member1.id == new_id
+    assert test_ensemble.members[0].id == new_id
+    assert test_ensemble.members.get_by_id(new_id)
+    assert new_id in test_ensemble.features[0].states.keys()
+
+    duplicate_id = member2.id
+    with pytest.raises(ValueError):
+        member1.id = duplicate_id
+    
+    
+
 
 
 def test_pickle():
