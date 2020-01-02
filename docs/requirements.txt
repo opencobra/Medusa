@@ -37,7 +37,7 @@ mpmath==1.0.0
 nbconvert==5.3.1
 nbformat==4.4.0
 nbsphinx==0.3.5
-notebook==5.7.2
+notebook==5.7.8
 numpy==1.15.4
 optlang==1.4.3
 packaging==18.0
