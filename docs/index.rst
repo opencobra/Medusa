@@ -50,6 +50,8 @@ Index
 * :doc:`creating_ensemble`
 * :doc:`simulating`
 * :doc:`io`
+* :doc:`benchmark_mem_cpu`
+* :doc:`benchmark_iterative_gapfill`
 * :doc:`faq`
 
 .. toctree::
@@ -61,6 +63,8 @@ Index
     creating_ensemble
     simulating
     io
+    benchmark_mem_cpu
+    benchmark_iterative_gapfill
     faq
 
 
