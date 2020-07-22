@@ -47,7 +47,7 @@ pandocfilters==1.4.2
 parso==0.3.1
 pexpect==4.6.0
 pickleshare==0.7.5
-Pillow==5.3.0
+Pillow==6.2.0
 pipdeptree==0.13.1
 pipenv==2018.10.13
 pkginfo==1.4.2
