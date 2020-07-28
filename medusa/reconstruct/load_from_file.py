@@ -1,47 +1,11 @@
-from __future__ import print_function
-from __future__ import absolute_import
-
 import medusa
 import cobra
 import cobra.test
-import numpy as np
-import csv
-import glob
-import pickle
-import pandas as pd
 import math
 import copy
-import time
 import random
-import time
-import sys
-import os
-import itertools
-import logging
-LOGGER = logging.getLogger(__name__)
-
-from sys import getsizeof
 from copy import deepcopy
-from collections import defaultdict
-from warnings import warn
-from itertools import chain
-from optlang.symbolics import Zero
-from optlang.interface import OPTIMAL
-from itertools import chain
 
-import cobra.core.model
-from cobra.flux_analysis import sample
-from cobra.core.solution import get_solution
-from cobra.flux_analysis.sampling import OptGPSampler
-from cobra.manipulation.delete import *
-from cobra.medium import find_boundary_types
-from cobra.flux_analysis import pfba
-from cobra.util import solver as sutil
-from cobra.core.solution import get_solution
-from cobra.core import DictList
-
-from medusa.core.ensemble import Ensemble
-from medusa.flux_analysis.flux_balance import optimize_ensemble
 from medusa.core.feature import Feature
 
 def parent_attr_of_base_component(base_comp):
@@ -109,11 +73,11 @@ def batch_load_from_files(model_file_names, identifier='ensemble', batchsize=5, 
                 raise AttributeError("Only cobra.core.Model objects supported")
             model_list.append(model)
         if range_list[0] == 0:
-            final_ensemble = medusa.Ensemble(model_list, identifier = identifier)
+            final_ensemble = medusa.core.Ensemble(model_list, identifier = identifier)
             if verbose == True:
                 print("Ensemble 1 finished")
         else:
-            new_ensemble = medusa.Ensemble(model_list)
+            new_ensemble = medusa.core.Ensemble(model_list)
             final_ensemble = add_ensembles(final_ensemble,new_ensemble)
             del new_ensemble
             if verbose == True:
@@ -130,7 +94,7 @@ def add_ensembles(e1,e2,verbose=False):
         Parameters
         ----------
         e1 & e2 : Ensemble Objects
-            Generated using medusa.Ensemble()
+            Generated using medusa.core.Ensemble()
     """
     
     # Deep copy ensembles

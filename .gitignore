@@ -8,3 +8,6 @@ dist/
 
 # jupyter checkpoints
 .ipynb_checkpoints
+
+# solver-specific files that might be generated while running tests locally
+gurobi.log

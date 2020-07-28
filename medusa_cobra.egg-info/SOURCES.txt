@@ -15,9 +15,11 @@ medusa/quality/mass_balance.py
 medusa/reconstruct/__init__.py
 medusa/reconstruct/degrade.py
 medusa/reconstruct/expand.py
+medusa/reconstruct/load_from_file.py
 medusa/test/__init__.py
 medusa/test/test_ensemble.py
 medusa/test/test_flux_balance.py
+medusa/test/test_load_from_file.py
 medusa/test/test_reconstruct.py
 medusa/test/test_variability.py
 medusa/test/data/Staphylococcus aureus.json

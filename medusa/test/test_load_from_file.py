@@ -1,8 +1,7 @@
+import cobra
 from cobra.test import create_test_model
 from medusa.core.ensemble import Ensemble
-from medusa.reconstruct.load_from_file import *
-
-from pickle import load
+from medusa.reconstruct.load_from_file import batch_load_from_files
 
 REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
 MISSING_ATTRIBUTE_DEFAULT = {'lower_bound':0,'upper_bound':0}
