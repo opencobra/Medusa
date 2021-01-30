@@ -1,21 +1,38 @@
-#generating dictionary of the probablities for all csv files
+# Import packages
+import mackinac
+import cobra
+import pandas as pd
+import json
+import os
+import numpy as np
+import medusa
+from pickle import load
+from termcolor import colored
+import matplotlib.pyplot as plt
+import pickle
+from os.path import join 
+import os.path
+import itertools
+import random
+from itertools import chain
+import os, json
+from optlang.interface import OPTIMAL
 
-def probability_dictionary(file_directory):
-    """
-    This function takes the directory forprobability files 
-    and generate a reaction with their probabilities
-    """
-    reaction_probability = {}
-    probability_data = pd.read_csv(file_directory)
-    header_row = 0
-    probability_data = probability_data.transpose()
-    probability_data.columns = probability_data.iloc[header_row]
-    probability_data  = probability_data.drop('Unnamed: 0')
-    for w in probability_data.index:
-        f = float(probability_data.loc[w, "probability"])
-        reaction_probability[w] = f 
-    return reaction_probability
+from cobra.flux_analysis.gapfilling import GapFiller
+from cobra.flux_analysis.parsimonious import add_pfba
+from cobra.core import DictList
 
+from cobra.util.solver import linear_reaction_coefficients
+
+from medusa.core.ensemble import Ensemble
+from medusa.core.feature import Feature
+from medusa.core.member import Member
+# from probanno import probanno
+REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
+MISSING_ATTRIBUTE_DEFAULT = {'lower_bound':0,'upper_bound':0}
+
+
+## Genral Functions
 def gapfill_to_ensemble(model, iterations=1, universal=None, lower_bound=0.05,
                  penalties= None, exchange_reactions=False,
                  demand_reactions=False, integer_threshold=1e-6):
@@ -24,6 +41,20 @@ def gapfill_to_ensemble(model, iterations=1, universal=None, lower_bound=0.05,
                           demand_reactions=demand_reactions,
                           exchange_reactions=exchange_reactions,
                           integer_threshold=integer_threshold)
+    # update the linear coefficients for the added reaction to the penalitties of the reaction
+    new_coefficients =  {}
+    for reaction in [rxn.id for rxn in gapfiller.reactions]:
+        if reaction in reaction_probability.keys():
+            new_coefficients[reaction] = 1-reaction_probability[reaction]
+    for react_id in new_coefficients.keys():
+        reaction = gapfiller.reactions.get_by_id(react_id)
+        for_var = reaction.forward_variable
+        rev_var = reaction.reverse_variable
+        if coefficients[for_var]>0.0:
+            coefficients[for_var] = new_coefficients[react_id]
+        if coefficients[rev_var]>0.0:
+            coefficients[rev_var] = new_coefficients[react_id]
+    gapfiller.objective.set_linear_coefficients(coefficients)
     solutions = gapfiller.fill(iterations=iterations)
     print("finished gap-filling. Constructing ensemble...")
     ensemble = _build_ensemble_from_gapfill_solutions(model,solutions,
@@ -97,21 +128,44 @@ def _continuous_iterative_binary_gapfill(model = None,
     variables = chain(*reaction_variables)
     for variable in variables:
         coefficients[variable] = 0.0
-    # update the linear coefficients for the added reaction to the penalitties of the reaction
-    new_coefficients =  {}
-    for reaction in [rxn.id for rxn in gapfiller.reactions]:
-        if reaction in reaction_probability.keys():
-            new_coefficients[reaction] = 1-reaction_probability[reaction]
-    for react_id in new_coefficients.keys():
-        reaction = gapfiller.reactions.get_by_id(react_id)
-        for_var = reaction.forward_variable
-        rev_var = reaction.reverse_variable
-        if coefficients[for_var]>0.0:
-            coefficients[for_var] = new_coefficients[react_id]
-        if coefficients[rev_var]>0.0:
-            coefficients[rev_var] = new_coefficients[react_id]
-    gapfiller.objective.set_linear_coefficients(coefficients)
-    
+#     # update the linear coefficients for the added reaction to the penalitties of the reaction
+#     new_coefficients =  {}
+#     for reaction in [rxn.id for rxn in gapfiller.reactions]:
+#         if reaction in reaction_probability.keys():
+#             new_coefficients[reaction] = 1-reaction_probability[reaction]
+#     for react_id in new_coefficients.keys():
+#         reaction = gapfiller.reactions.get_by_id(react_id)
+#         for_var = reaction.forward_variable
+#         rev_var = reaction.reverse_variable
+#         if coefficients[for_var]>0.0:
+#             coefficients[for_var] = new_coefficients[react_id]
+#         if coefficients[rev_var]>0.0:
+#             coefficients[rev_var] = new_coefficients[react_id]
+#     gapfiller.objective.set_linear_coefficients(coefficients)
+
+    ## set a constraint on flux through the original objective
+    for reaction in original_objective.keys():
+        print("Constraining lower bound for " + reaction)
+        gapfiller.reactions.get_by_id(reaction).lower_bound = lower_bound
+
+    exchange_reactions = [rxn for rxn in gapfiller.reactions if\
+                            rxn.id.startswith(exchange_prefix)]
+    for rxn in exchange_reactions:
+        rxn.lower_bound = 0
+
+    for cycle_num in range(0,output_ensemble_size):
+        print("starting cycle number " + str(cycle_num))
+        cycle_reactions = set()
+        original_coefficients = \
+            gapfiller.objective.get_linear_coefficients(gapfiller.variables)
+
+        for condition in cycle_order[cycle_num]:
+            # set the medium for this condition.
+            for ex_rxn in phenotype_dict[condition].keys():
+                gapfiller.reactions.get_by_id(ex_rxn).lower_bound = \
+                    -1.0*phenotype_dict[condition][ex_rxn]
+                gapfiller.reactions.get_by_id(ex_rxn).upper_bound = \
+                    1.0*phenotype_dict[condition][ex_rxn]
     # Generate the coefficients list and Randomly varying the coefficients 
     iou = []
     for y in coefficients.values():
@@ -121,7 +175,7 @@ def _continuous_iterative_binary_gapfill(model = None,
     for n in range(100):
         new_coeff = iou + np.random.normal(0, t, len(iou))
         coefficients = dict(zip(coefficients.keys(), abs(new_coeff)))
-                            
+                           
         gapfiller.objective.set_linear_coefficients(coefficients)
         for reaction in original_objective.keys():
             print("Constraining lower bound for " + reaction)
@@ -149,7 +203,7 @@ def _continuous_iterative_binary_gapfill(model = None,
 
 def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
     
-    model.reactions.EX_cpd00007_e.lower_bound = 0 # out of the function on medusa
+#     model.reactions.EX_cpd00007_e.lower_bound = 0 # out of the function on medusa
     ensemble = Ensemble(identifier=model.id,name=model.name)
     ensemble.base_model = model.copy()
     """
@@ -272,8 +326,6 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
         members += [member]
 
     ensemble.members = members
-#     save_directory = ("/Users/basazinbelhu/probannopy/iterative_pfba/data/medusa_gapfilled_model_pickle/" +str(ensemble.name)+".pkl")
-#     ensemble.to_pickle(save_directory)
 
     return ensemble
 
