@@ -49,7 +49,7 @@ pexpect==4.6.0
 pickleshare==0.7.5
 Pillow==6.2.0
 pipdeptree==0.13.1
-pipenv==2018.10.13
+pipenv==2022.1.8
 pkginfo==1.4.2
 ply==3.11
 pockets==0.7.2
