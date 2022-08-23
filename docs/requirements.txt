@@ -34,7 +34,7 @@ matplotlib==3.0.2
 -e git+https://github.com/gregmedlock/Medusa.git@bc4a72f2e4f1ead9b845411e175a31c5019fa6e1#egg=medusa_cobra
 mistune==0.8.4
 mpmath==1.0.0
-nbconvert==5.3.1
+nbconvert==6.5.1
 nbformat==4.4.0
 nbsphinx==0.3.5
 notebook==6.4.1
