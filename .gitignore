@@ -11,3 +11,6 @@ dist/
 
 # solver-specific files that might be generated while running tests locally
 gurobi.log
+
+# Virtual environment
+myenv
