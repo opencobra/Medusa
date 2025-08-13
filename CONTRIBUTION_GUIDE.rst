@@ -7,7 +7,7 @@ Installation
 
 Create a fork of the `development` branch and clone to your computer. We recommend working within a virtualenv, and installing your clone locally by navigating to the root of the project (e.g. /Medusa/) and running::
 
-    python setup.py development
+    python setup.py develop
 
 You may need to rerun this command after making changes to medusa for those changes to take effect.
 
