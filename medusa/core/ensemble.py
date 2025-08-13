@@ -72,7 +72,7 @@ class Ensemble(Object):
                     raise AttributeError("list_of_models may only contain cobra.core.Model objects")
                 self.base_model = list_of_models[0]
 
-    def _populate_features_base_new(self, list_of_models):
+    def _populate_features_base(self, list_of_models):
         # Determine all reactions across all models and construct the base model
         base_model = list_of_models[0].copy()
         all_reactions = set(rxn.id for rxn in base_model.reactions)
@@ -114,7 +114,7 @@ class Ensemble(Object):
             rxn_vals = pd.DataFrame.from_dict(rxn_vals, orient='index') # TODO remark: faster than transposing
 
             for reaction_attribute in REACTION_ATTRIBUTES:
-                if rxn_vals[reaction_attribute].nunique() > 1:
+                if rxn_vals[reaction_attribute].nunique() > 1: # TODO remark: used to be len() > 1, seems incorrect
                     rxn_from_base = base_model.reactions.get_by_id(reaction)
                     feature_id = f"{reaction}_{reaction_attribute}"
                     feature_id = rxn_from_base.id + '_' + reaction_attribute
