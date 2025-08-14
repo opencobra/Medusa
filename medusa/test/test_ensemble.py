@@ -1,4 +1,4 @@
-from cobra.test import create_test_model
+from cobra.io import load_model
 from medusa.core.ensemble import Ensemble
 
 from pickle import load
@@ -10,10 +10,10 @@ MISSING_ATTRIBUTE_DEFAULT = {'lower_bound':0,'upper_bound':0}
 
 def construct_textbook_ensemble():
     # create two identical models and make an ensemble
-    model1 = create_test_model("textbook")
+    model1 = load_model("textbook")
     model1.remove_reactions(model1.reactions[1:3])
     model1.id = 'first_textbook'
-    model2 = create_test_model("textbook")
+    model2 = load_model("textbook")
     model2.remove_reactions(model2.reactions[4:6])
     model2.id = 'second_textbook'
     textbook_ensemble = Ensemble(list_of_models=[model1,model2],
@@ -22,13 +22,13 @@ def construct_textbook_ensemble():
 
 def construct_mixed_ensemble():
     # create 4 models, which have reactions removed and a bound difference.
-    model1 = create_test_model("textbook")
+    model1 = load_model("textbook")
     model1.remove_reactions(model1.reactions[1:3])
     model1.id = 'first_textbook'
-    model2 = create_test_model("textbook")
+    model2 = load_model("textbook")
     model2.remove_reactions(model2.reactions[4:6])
     model2.id = 'second_textbook'
-    model3 = create_test_model("textbook")
+    model3 = load_model("textbook")
     model3.remove_reactions(model3.reactions[5:7])
     model3.id = 'third_textbook'
     model4 = model3.copy()
@@ -43,7 +43,7 @@ def test_ensemble_creation():
     test_ensemble = construct_textbook_ensemble()
     # The base model should have the same number of reactions and metabolites
     # as the original model, since we only remove/modify reactions.
-    textbook = create_test_model("textbook")
+    textbook = load_model("textbook")
     assert len(test_ensemble.base_model.reactions) == len(textbook.reactions)
     assert len(test_ensemble.base_model.metabolites) == len(textbook.metabolites)
 
@@ -72,7 +72,7 @@ def test_mixed_ensemble_creation():
     test_ensemble = construct_mixed_ensemble()
     # The base model should have the same number of reactions and metabolites
     # as the original model, since we only remove/modify reactions.
-    textbook = create_test_model("textbook")
+    textbook = load_model("textbook")
     assert len(test_ensemble.base_model.reactions) == len(textbook.reactions)
     assert len(test_ensemble.base_model.metabolites) == len(textbook.metabolites)
 
@@ -97,7 +97,7 @@ def test_mixed_ensemble_creation():
 
 def test_extract_member():
     test_ensemble = construct_textbook_ensemble()
-    original_model = create_test_model("textbook")
+    original_model = load_model("textbook")
 
     extracted_member = test_ensemble.extract_member(test_ensemble.members[0])
 
@@ -145,7 +145,7 @@ def test_pickle():
         unpickled = load(infile)
 
     test_ensemble = unpickled
-    textbook = create_test_model("textbook")
+    textbook = load_model("textbook")
     assert len(test_ensemble.base_model.reactions) == len(textbook.reactions)
     assert len(test_ensemble.base_model.metabolites) == len(textbook.metabolites)
 

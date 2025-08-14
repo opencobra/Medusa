@@ -1,6 +1,6 @@
 import medusa
 import cobra
-import cobra.test
+import cobra.io
 import math
 import copy
 import random

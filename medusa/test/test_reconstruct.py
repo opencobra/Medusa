@@ -1,6 +1,6 @@
 import pandas as pd
 
-from cobra.test import create_test_model
+from cobra.io import load_model
 from cobra.io import load_json_model
 from cobra.core import Reaction
 
