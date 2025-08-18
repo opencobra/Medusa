@@ -86,5 +86,5 @@ def test_fba_specific_models():
         assert rows == len(model_list)
         assert columns == len(ensemble.base_model.reactions)
 
-        assert rownames.contains(model1.id)
-        assert rownames.contains(model2.id)
+        assert model1.id in rownames
+        assert model2.id in rownames
