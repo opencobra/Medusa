@@ -163,7 +163,8 @@ def test_pickle():
     # each feature should have a component_attribute in the list of allowable
     # attributes
     # each feature should have at least two unique state values across all models
+    reaction_ids = {rxn.id for rxn in test_ensemble.base_model.reactions}
     for feature in test_ensemble.features:
-        assert feature.base_component in test_ensemble.base_model.reactions
+        assert feature.base_component.id in reaction_ids
         assert feature.component_attribute in REACTION_ATTRIBUTES
         assert len(set(feature.states.values())) > 1

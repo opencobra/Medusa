@@ -1,4 +1,4 @@
-from pandas import DataFrame
+import pandas as pd
 from random import sample
 from cobra.flux_analysis.variability import (
     flux_variability_analysis, find_blocked_reactions,
@@ -60,7 +60,7 @@ def ensemble_fva(ensemble, reaction_list, num_models=[],specific_models=None,
 
     # initialize dataframe to store results. max and min for each model will
     # each take a single row, and the columns will be reactions.
-    all_fva_results = DataFrame()
+    all_fva_results = pd.DataFrame()
 
     if specific_models:
         model_list = specific_models
@@ -79,5 +79,5 @@ def ensemble_fva(ensemble, reaction_list, num_models=[],specific_models=None,
             fva_result = fva_result.T
             # add the model source as a column
             fva_result['model_source'] = [model,model]
-            all_fva_results = all_fva_results.append(fva_result)
+            all_fva_results = pd.concat([all_fva_results, fva_result])
     return all_fva_results

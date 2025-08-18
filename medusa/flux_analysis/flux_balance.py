@@ -12,11 +12,14 @@ from cobra import Reaction
 
 from medusa.core.member import Member
 
-
 def _optimize_ensemble(ensemble, return_flux, member_id, **kwargs):
+
     ensemble.set_state(member_id)
     ensemble.base_model.optimize(**kwargs)
-    flux_dict = {rxn:ensemble.base_model.reactions.get_by_id(rxn).flux
+
+    # TODO solved the error, but revise!
+    reaction_ids = [rxn.id for rxn in ensemble.base_model.reactions]
+    flux_dict = {rxn:ensemble.base_model.reactions[reaction_ids.index(rxn)].flux
                         for rxn in return_flux}
     return (member_id, flux_dict, ensemble.base_model.solver.status)
 
