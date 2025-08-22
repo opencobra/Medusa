@@ -24,6 +24,8 @@ def boundsEnsemble(model, boundsDict):
         A dictionary of dataframes in which each row (index) represents a 
         model within the ensemble, and each column represents a reaction for 
         which values of objective when the reaction is deleted are returned.
+        As a reference, a valid boundsDict can be generated using the
+        helper function _setBounds.
 
     Returns
     -------
@@ -155,6 +157,63 @@ def _setBoundsFullFactorial(model, rxn_ids, bound=None, reversibility='respect')
     return boundsDict
 
 def _setBounds(model, rxn_ids, method='random', reversibility=None, bound=None, n_models=100):
+
+    ''' 
+    Helper function for constructing object 'boundsDict', an argument used by 
+    the 'boundsEnsemble' function. Users can provide their own boundsDict, this 
+    helper function exists only for providing users with reusable code and for 
+    internal function testing. 
+
+    Parameters
+    ----------
+    model : cobra.Model A single cobraPy Model that will be used as a baseline
+        to generate an ensemble of models with different reaction bounds for a select
+        set of reactions.
+    
+    rxn_ids : list of str 
+        Target reactions for which each ensemble member will have a different 
+        combination of bounds.
+
+    method : str, optional 
+        Method used to generate reaction bounds.
+        Must be one of: 
+            - 'random' : The value of the lower and upper bound of each target reaction 
+                is chosen as a random integer between 0 and the bound provided in 
+                the 'bound' argument.
+            - 'onOff' : Sets reactions to either completely off (0, 0) or active (-bound, +bound). 
+                The number of models that will be created is two to the power of the number of
+                target reactions (length of rxn_ids argument).
+            - 'fullFactorial' : Creates all possible combinations of states for all target reactions.
+                I.e., each reaction can take on values (0,0), (-bound,0), (0,bound), and (-bound, bound).
+                The number of potential combinations is thus four to the power of the number of
+                target reactions (length of rxn_ids argument). Note, that if reversibility is 'respect',
+                some options will be removed, i.e., the reversibility direction of the reaction in the
+                baseline model will be respected.
+        Default is 'random'. 
+
+    reversibility : str, optional 
+        Options are 'respect' or 'ignore'. If 'respect', the reaction reversibility of the baseline
+        model will be respected. E.g., if the baseline model only allows for the forward reaction,
+        then reversibility or backward reactions will not be allowed for any of the new members.
+        If 'ignore', previously irreversible reactions will be allowed to be reversible.
+        Default is 'respect'.
+
+    bound : float or int or None, optional 
+        This value is used as the magnitude of the reaction bounds (e.g., ±bound). 
+        If None (default), a bound of 1000 is used internally.
+
+    n_models : int
+        Number of models that will be created if method is 'random', ignored otherwise.
+        Default is 100.
+
+    Returns
+    -------
+    boundsDict : A dictionary of pandas.DataFrames A dictionary of dataframes in which
+        each row (index) represents a model within the ensemble, and each column represents
+        a reaction for which values of objective when the reaction is deleted are returned.
+
+    '''
+
     allowed_methods = ['random', 'onOff', 'fullFactorial']
     if method not in allowed_methods:
         raise ValueError(f"Invalid method '{method}'. Choose one of {allowed_methods}.")
