@@ -24,7 +24,8 @@ def bofEnsemble(model, BofDf, BofId=None):
         the BOF. The columns correspond to the different ensemble members, where
         the first column corresponding to the input (baseline) model. The values
         in the dataframe are the coefficients of that metabolite in that ensemble
-        member.
+        member. As a reference, a valid BofDf dataframe can be generated using the
+        helper function _getBofDf.
     BofId : str, optional
         Identifier of the biomass objective function reaction.
         If not provided (None, default), the functions attempts to retrieve 
@@ -121,6 +122,31 @@ def _getBofId(model):
     return BofId
 
 def _getBofDf(model, BofId=None, n_models=100):
+
+    '''
+    Create a dataframe in which each row represents a metabolite within
+    the BOF. The columns correspond to the different ensemble members, where
+    the first column corresponding to the input (baseline) model. The values
+    in the dataframe are the coefficients of that metabolite in that ensemble
+    member. In this (toy) function, coefficients for each model are the sample 
+    from a normal distribution with as mean the metabolite coefficient in the 
+    original BOF and standard deviation 0.1.
+
+    Parameters
+    ----------
+    model : cobra.Model
+        The ensemble with which to perform reaction deletions
+    BofId : str, optional
+        Identifier of the biomass objective function reaction.
+        If not provided (None, default), the functions attempts to retrieve 
+        the BOF automatically.
+    n_models : Int
+        Define how many ensemble members should be created.
+
+    Returns
+    -------
+    A pandas Dataframe that serves as input for the bofEnsemble() function.
+    '''
     
     # Attempt to retreive BofId automatically if not provided
     if BofId is None:
