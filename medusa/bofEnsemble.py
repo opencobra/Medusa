@@ -8,25 +8,34 @@ import pandas as pd
 
 def bofEnsemble(model, BofDf, BofId=None):
     '''
-    Create an ensemble of models where each member has the same reactions but
-    different reaction bounds, without the need of first constructing a list of these
-    individual models. While all members share the same reactions, the bounds of some
-    reactions in some members maybe set to (0,0), i.e., inactivating the reaction.
+    Create an ensemble of models where each member differs only with respect to
+    their biomass objective functions (BOF), without the need of first constructing 
+    a list of the individual models. Note that it is allowed for members to have
+    a coefficient of zero for certain metabolites in the BOF, i.e., removing the
+    metabolite from the BOF. However, it is currently not possible for members to
+    include additional metabolites compared to the baseline model.
 
     Parameters
     ----------
     model : cobra.Model
         The ensemble with which to perform reaction deletions
-    boundsDict : A dictionary of pandas.DataFrames
-        A dictionary of dataframes in which each row (index) represents a 
-        model within the ensemble, and each column represents a reaction for 
-        which values of objective when the reaction is deleted are returned.
+    BofDf : A pandas.DataFrame
+        A dataframe in which each row represents a metabolite within
+        the BOF. The columns correspond to the different ensemble members, where
+        the first column corresponding to the input (baseline) model. The values
+        in the dataframe are the coefficients of that metabolite in that ensemble
+        member.
+    BofId : str, optional
+        Identifier of the biomass objective function reaction.
+        If not provided (None, default), the functions attempts to retrieve 
+        the BOF automatically. 
 
     Returns
     -------
     Medusa.core.ensemble
-        An ensemble where each member has accordingly adjusted reaction bounds
+        An ensemble where each member has accordingly adjusted BOF coefficients
     '''
+
     # Setup ensemble structure base on single baseline model
     ensemble = Ensemble([model],
                         identifier = "placeholderId",
@@ -38,13 +47,15 @@ def bofEnsemble(model, BofDf, BofId=None):
     if BofId is None:
         BofId = _getBofId(model)
     
-    hlp = ensemble.base_model.reactions.get_by_id(BofId).metabolites
+    metDict = ensemble.base_model.reactions.get_by_id(BofId).metabolites
     states = {}
-    for col_idx in range(1, BofDf.shape[1]):  # all columns except the first
+    for col_idx in range(BofDf.shape[1]):
         col_name = BofDf.columns[col_idx]
-        states[col_name] = _update_dict_from_df_column(hlp, BofDf, col_idx)
+        states[col_name] = _update_dict_from_df_column(metDict, BofDf, col_idx)
 
-    rxn_base = ensemble.base_model.reactions.get_by_id(BofId)
+    # TODO if we ever want to allow for new members having additional metabolites in their 
+    # BOF compared to the baseline model, we should probably update here.
+    rxn_base = ensemble.base_model.reactions.get_by_id(BofId) 
     feature_id = f"{BofId}_metabolites"
 
     # Create and add the Feature object
@@ -59,14 +70,14 @@ def bofEnsemble(model, BofDf, BofId=None):
     ensemble.features.append(feature)
 
     if ensemble.base_model.name is not None:
-        names = [ensemble.base_model.name] + ['placeholderName' for _ in range(BofDf.shape[1]-2)]
+        names = [ensemble.base_model.name] + ['placeholderName' for _ in range(BofDf.shape[1]-1)]
     else:
-        names = ['placeholderName' for _ in range(BofDf.shape[1]-1)]
+        names = ["templateName"] + ['placeholderName' for _ in range(BofDf.shape[1])]
 
     if ensemble.base_model.id is not None:
-        ids = [ensemble.base_model.id] + [f'model_{i}' for i in range(BofDf.shape[1]-2)]
+        ids = [ensemble.base_model.id] + [f'model_{i}' for i in range(BofDf.shape[1]-1)]
     else:
-        ids = ['placeholderId' for _ in range(BofDf.shape[1]-1)]
+        ids = ["templateId"] + ['placeholderId' for _ in range(BofDf.shape[1])]
 
     for i in range(0,len(ids)):
         model_states = dict()
@@ -81,10 +92,10 @@ def bofEnsemble(model, BofDf, BofId=None):
 
     return ensemble
 
-def _update_dict_from_df_column(hlp, df, col_idx):
+def _update_dict_from_df_column(metDict, df, col_idx):
     values = df.iloc[:, col_idx].tolist()
     updated_dict = {}
-    for key, value in zip(hlp.keys(), values):
+    for key, value in zip(metDict.keys(), values):
         updated_dict[key] = value
     return updated_dict
 
@@ -127,8 +138,7 @@ def _getBofDf(model, BofId=None, n_models=100):
 
     # Create full DataFrame at once
     col_names = [f"model_{i}" for i in range(n_models)]
-    BofDf = pd.DataFrame(model_data, columns=col_names)
+    BofDf = pd.DataFrame(model_data, index=met_ids, columns=col_names)
     BofDf.insert(0, model.id, template)
-    BofDf.insert(0, "Metabolite", met_ids)
 
     return BofDf
