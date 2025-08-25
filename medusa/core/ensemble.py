@@ -168,12 +168,23 @@ class Ensemble(Object):
             member = self.members.get_by_id(member)
 
         for feature in self.features:
-            if isinstance(feature.base_component, cobra.core.Reaction):
-                setattr(feature.base_component,\
-                        feature.component_attribute,\
-                        feature.states[member.id])
-            else:
+            component = feature.base_component
+            attr = feature.component_attribute
+            value = feature.states[member.id]
+
+            if not isinstance(component, cobra.core.Reaction):
                 raise AttributeError("Only cobra.core.Reaction supported for base_component type")
+
+            try:
+                # Try direct assignment first
+                setattr(component, attr, value)
+            except AttributeError as e:
+                # Handle known read-only attributes 
+                # TODO only metabolites for now , could add to this
+                if attr == "metabolites":
+                    component.add_metabolites(value, combine=False)
+                else:
+                    raise AttributeError(f"Cannot set attribute '{attr}' and no handler is defined for it.") from e
 
     def to_pickle(self, filename):
         """
