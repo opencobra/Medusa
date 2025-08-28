@@ -1,5 +1,5 @@
 import cobra
-from cobra.test import create_test_model
+from cobra.io import load_model
 from medusa.core.ensemble import Ensemble
 from medusa.reconstruct.load_from_file import batch_load_from_files
 
@@ -8,15 +8,15 @@ MISSING_ATTRIBUTE_DEFAULT = {'lower_bound':0,'upper_bound':0}
 
 def construct_mixed_ensemble_2():
     # create 4 models, which have reactions removed and a bound difference.
-    model1 = create_test_model("textbook")
+    model1 = load_model("textbook")
     model1.remove_reactions(model1.reactions[1:3])
     model1.id = 'first_textbook'
     cobra.io.save_json_model(model1, "model1.json")
-    model2 = create_test_model("textbook")
+    model2 = load_model("textbook")
     model2.remove_reactions(model2.reactions[4:6])
     model2.id = 'second_textbook'
     cobra.io.save_json_model(model2, "model2.json")
-    model3 = create_test_model("textbook")
+    model3 = load_model("textbook")
     model3.remove_reactions(model3.reactions[5:7])
     model3.id = 'third_textbook'
     model3.reactions.get_by_id('SUCCt2_2').lower_bound = -1000
@@ -34,15 +34,15 @@ def construct_mixed_batch_ensemble():
     # UPDATE PATHS TO SAVE AND LOAD MODELS
     
     # create 4 models, which have reactions removed and a bound difference.
-    model1 = create_test_model("textbook")
+    model1 = load_model("textbook")
     model1.remove_reactions(model1.reactions[1:3])
     model1.id = 'first_textbook'
     cobra.io.save_json_model(model1, "model1.json")
-    model2 = create_test_model("textbook")
+    model2 = load_model("textbook")
     model2.remove_reactions(model2.reactions[4:6])
     model2.id = 'second_textbook'
     cobra.io.save_json_model(model2, "model2.json")
-    model3 = create_test_model("textbook")
+    model3 = load_model("textbook")
     model3.remove_reactions(model3.reactions[5:7])
     model3.id = 'third_textbook'
     model3.reactions.get_by_id('SUCCt2_2').lower_bound = -1000
@@ -63,7 +63,7 @@ def test_batch_load_vs_innate():
     test_batch_ensemble = construct_mixed_batch_ensemble()
     # The base model should have the same number of reactions and metabolites
     # as the original model, since we only remove/modify reactions.
-    textbook = create_test_model("textbook")
+    textbook = load_model("textbook")
     assert len(test_ensemble.base_model.reactions) == len(textbook.reactions)
     assert len(test_ensemble.base_model.metabolites) == len(textbook.metabolites)
     assert len(test_batch_ensemble.base_model.reactions) == len(textbook.reactions)
