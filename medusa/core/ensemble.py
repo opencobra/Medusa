@@ -13,7 +13,6 @@ from medusa.core.feature import Feature
 from pickle import dump
 
 import cobra
-import random
 import pandas as pd
 
 REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
@@ -109,7 +108,6 @@ class Ensemble(Object):
                     rxn_from_base = base_model.reactions.get_by_id(reaction)
                     feature_id = rxn_from_base.id + '_' + reaction_attribute
                     states = rxn_vals[reaction_attribute].to_dict()
-                    #states = {model.id:rxn_vals[model.id][reaction_attribute] for model in list_of_models}
                     feature = Feature(ensemble=self,\
                                         identifier=feature_id,\
                                         name=rxn_from_base.name,\
