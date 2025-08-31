@@ -64,7 +64,7 @@ PyYAML>=4.2b1
 pyzmq==17.1.2
 qtconsole==4.4.3
 readme-renderer==24.0
-requests==2.20.1
+requests==2.32.4
 requests-toolbelt==0.8.0
 ruamel.yaml==0.15.77
 scikit-learn==0.20.1
