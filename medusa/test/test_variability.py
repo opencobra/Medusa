@@ -1,17 +1,17 @@
-from cobra.test import create_test_model
+from cobra.io import load_model
 from medusa.core.ensemble import Ensemble
 from medusa.flux_analysis.variability import ensemble_fva
 
 
 def construct_textbook_ensemble():
     # create two identical models and make an ensemble
-    model1 = create_test_model("textbook")
+    model1 = load_model("textbook")
     model1.remove_reactions(model1.reactions[1:3])
     model1.id = 'first_textbook'
-    model2 = create_test_model("textbook")
+    model2 = load_model("textbook")
     model2.remove_reactions(model2.reactions[4:6])
     model2.id = 'second_textbook'
-    model3 = create_test_model("textbook")
+    model3 = load_model("textbook")
     model3.remove_reactions(model3.reactions[2:5])
     model3.id = 'third_textbook'
     textbook_ensemble = Ensemble(list_of_models=[model1,model2,model3],

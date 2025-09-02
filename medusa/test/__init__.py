@@ -4,7 +4,7 @@ import cobra
 import json
 import pandas as pd
 
-import cobra.test
+import cobra.io
 from cobra.core import Reaction
 
 from medusa.core.ensemble import Ensemble
@@ -33,14 +33,14 @@ def create_test_ensemble(ensemble_name="Staphylococcus aureus"):
 def create_test_model(model_name="textbook"):
     """Returns a cobra.Model for testing
     model_name: str
-        One of ['Staphylococcus aureus'] or any models in cobra.test
+        One of ['Staphylococcus aureus'] or any models in cobra.io
     """
     if model_name == "Saureus_seed":
         base_model = cobra.io.load_json_model(join(data_dir, 'Staphylococcus aureus.json'))
 
     else:
         try:
-            base_model = cobra.test.create_test_model(model_name)
+            base_model = cobra.io.load_model(model_name)
         except:
             raise ValueError('model_name does not match one of the test models available')
 

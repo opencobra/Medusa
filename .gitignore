@@ -14,3 +14,4 @@ gurobi.log
 
 # Virtual environment
 myenv
+.venv

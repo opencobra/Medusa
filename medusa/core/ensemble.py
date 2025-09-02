@@ -13,7 +13,6 @@ from medusa.core.feature import Feature
 from pickle import dump
 
 import cobra
-import random
 import pandas as pd
 
 REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
