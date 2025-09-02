@@ -71,51 +71,66 @@ class Ensemble(Object):
                     raise AttributeError("list_of_models may only contain cobra.core.Model objects")
                 self.base_model = list_of_models[0]
 
-    def _populate_features_base(self,list_of_models):
+    def _populate_features_base(self, list_of_models):
         # Determine all reactions across all models and construct the base model
-        all_reactions = set()
         base_model = list_of_models[0].copy()
-        all_reactions = all_reactions | set([rxn.id for rxn in base_model.reactions])
+        all_reactions = set(rxn.id for rxn in base_model.reactions)
         for model in list_of_models:
-            new_reactions = set([rxn.id for rxn in model.reactions]) - \
-                                all_reactions
-            reactions_to_add = [model.reactions.get_by_id(rxn) for rxn in new_reactions]
-            base_model.add_reactions(reactions_to_add)
-            all_reactions = all_reactions | set([rxn.id for rxn in model.reactions])
-
+            model_rxn_ids = set(rxn.id for rxn in model.reactions)
+            new_reactions = model_rxn_ids - all_reactions
+            if new_reactions:
+                reactions_to_add = [model.reactions.get_by_id(rxn_id) for rxn_id in new_reactions]
+                base_model.add_reactions(reactions_to_add)
+                all_reactions.update(new_reactions)
         all_reactions = list(all_reactions)
 
-        # Determine reactions that vary in any model and construct a feature for
-        # each unique parameter value for that reaction in the ensemble
-        variable_reactions = []
+        # Pre-cache model reaction attributes in dicts to avoid repeated getattr calls
+        model_reaction_attrs = {}
+        for model in list_of_models:
+            mid = model.id
+            model_reaction_attrs[mid] = {}
+            for rxn in model.reactions:
+                # Direct attribute access instead of getattr
+                model_reaction_attrs[mid][rxn.id] = {
+                    'lower_bound': rxn.lower_bound,
+                    'upper_bound': rxn.upper_bound
+                }
+
+        # Iterate over each reaction to detect variable attributes
         for reaction in all_reactions:
+            # Collect reaction attributes per model
             rxn_vals = {}
             for model in list_of_models:
-                rxn_vals[model.id] = {}
-                if reaction in [x.id for x in model.reactions]:
-                    rxn = model.reactions.get_by_id(reaction)
-                    for reaction_attribute in REACTION_ATTRIBUTES:
-                        rxn_vals[model.id][reaction_attribute] = \
-                            getattr(rxn,reaction_attribute)
-                else: # for reactions not present in this model, select the default
-                    for reaction_attribute in REACTION_ATTRIBUTES:
-                        rxn_vals[model.id][reaction_attribute] = \
-                            MISSING_ATTRIBUTE_DEFAULT[reaction_attribute]
+                mid = model.id
+                rxn_attrs = model_reaction_attrs[mid]
+                if reaction in rxn_attrs:
+                    rxn_vals[mid] = rxn_attrs[reaction]
+                else:
+                    # Use default bounds if reaction missing from model
+                    rxn_vals[mid] = {'lower_bound': 0, 'upper_bound': 0} # TODO remark: could use MISSING_ATTRIBUTE_DEFAULT instead
 
-            rxn_vals = pd.DataFrame(rxn_vals).T
+            # Create a DataFrame for easier analysis of attribute variability
+            rxn_vals = pd.DataFrame.from_dict(rxn_vals, orient='index') # TODO remark: faster than transposing
+
             for reaction_attribute in REACTION_ATTRIBUTES:
-                if len(rxn_vals[reaction_attribute].unique()) > 1:
+                if rxn_vals[reaction_attribute].nunique() > 1: # TODO remark: used to be len() > 1, seems incorrect
                     rxn_from_base = base_model.reactions.get_by_id(reaction)
+                    feature_id = f"{reaction}_{reaction_attribute}"
                     feature_id = rxn_from_base.id + '_' + reaction_attribute
+
+                    # Create states dict for feature
                     states = rxn_vals[reaction_attribute].to_dict()
-                    feature = Feature(ensemble=self,\
-                                        identifier=feature_id,\
-                                        name=rxn_from_base.name,\
-                                        base_component=rxn_from_base,\
-                                        component_attribute=reaction_attribute,\
-                                        states=states)
-                    self.features += [feature]
-                    variable_reactions.append(reaction)
+
+                    # Create and add the Feature object
+                    feature = Feature(
+                        ensemble=self,
+                        identifier=feature_id,
+                        name=rxn_from_base.name,
+                        base_component=rxn_from_base,
+                        component_attribute=reaction_attribute,
+                        states=states,
+                    )
+                    self.features.append(feature)
 
         self.base_model = base_model
 
