@@ -11,7 +11,7 @@ REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
 
 def boundsEnsemble(model, boundsDict):
     '''
-    Create an ensemble of models where each member has the same reactions but
+    Create an ensemble of models where all members have the same reactions but
     different reaction bounds, without the need of first constructing a list of these
     individual models. While all members share the same reactions, the bounds of some
     reactions in some members maybe set to (0,0), i.e., inactivating the reaction.
@@ -19,11 +19,11 @@ def boundsEnsemble(model, boundsDict):
     Parameters
     ----------
     model : cobra.Model
-        The ensemble with which to perform reaction deletions
+        A cobrapy model.
     boundsDict : A dictionary of pandas.DataFrames
-        A dictionary of dataframes in which each row (index) represents a 
-        model within the ensemble, and each column represents a reaction for 
-        which values of objective when the reaction is deleted are returned.
+        A dictionary with reaction identifiers as keys and dataframes as values.
+        Each row in the dataframe is the identifier of a model within the resulting ensemble.
+        The dataframe has two columns, one for the lower and one for the upper bound of the reaction.
         As a reference, a valid boundsDict can be generated using the
         helper function _setBounds.
 
@@ -78,7 +78,7 @@ def boundsEnsemble(model, boundsDict):
 
     return ensemble
 
-def _setBoundsRandom(model, rxn_ids, bound=None, reversibility='respect', n_models=100):
+def _setBoundsRandom(model, rxn_ids, bound=None, reversibility=True, n_models=100):
     if bound is None:
         bound = 1000
         warnings.warn("No 'bound' provided for method 'random'. Defaulting to bound = 1000.")
@@ -96,7 +96,7 @@ def _setBoundsRandom(model, rxn_ids, bound=None, reversibility='respect', n_mode
         for rxn_id in rxn_ids
     }
 
-    if reversibility == 'respect':
+    if reversibility:
         for rxn_id in rxn_ids:
             if model.reactions.get_by_id(rxn_id).lower_bound == 0:
                 boundsDict[rxn_id].lower_bound = 0
@@ -123,16 +123,14 @@ def _setBoundsOnOff(model, rxn_ids):
     return boundsDict
 
 
-def _setBoundsFullFactorial(model, rxn_ids, bound=None, reversibility='respect'):
+def _setBoundsFullFactorial(model, rxn_ids, bound=None, reversibility=True):
     if bound is None:
         bound = 1000
         warnings.warn("No 'bound' provided for method 'fullFactorial'. Defaulting to bound = 1000.")
 
     default_options = [(-abs(bound), 0), (-abs(bound), abs(bound)), (0, 0), (0, abs(bound))]
 
-    if reversibility == 'ignore':    
-        bound_options_dict = {rxn_id: default_options for rxn_id in rxn_ids}
-    else:
+    if reversibility:
         bound_options_dict = {}
         for rxn_id in rxn_ids:
             if model.reactions.get_by_id(rxn_id).reversibility:
@@ -140,6 +138,8 @@ def _setBoundsFullFactorial(model, rxn_ids, bound=None, reversibility='respect')
             else:
                 bound_options_dict[rxn_id] = [(0, 0), 
                                               tuple(bound * (x / abs(x)) if x != 0 else 0 for x in model.reactions.get_by_id(rxn_id).bounds)]
+    else:    
+        bound_options_dict = {rxn_id: default_options for rxn_id in rxn_ids}
 
     reaction_options = [bound_options_dict[rxn_id] for rxn_id in rxn_ids]
     all_combinations = list(itertools.product(*reaction_options))
@@ -156,7 +156,7 @@ def _setBoundsFullFactorial(model, rxn_ids, bound=None, reversibility='respect')
 
     return boundsDict
 
-def _setBounds(model, rxn_ids, method='random', reversibility=None, bound=None, n_models=100):
+def _setBounds(model, rxn_ids, method='random', reversibility=True, bound=None, n_models=100):
 
     ''' 
     Helper function for constructing object 'boundsDict', an argument used by 
@@ -191,12 +191,12 @@ def _setBounds(model, rxn_ids, method='random', reversibility=None, bound=None, 
                 baseline model will be respected.
         Default is 'random'. 
 
-    reversibility : str, optional 
-        Options are 'respect' or 'ignore'. If 'respect', the reaction reversibility of the baseline
-        model will be respected. E.g., if the baseline model only allows for the forward reaction,
+    reversibility : boolean, optional 
+        If True, the reaction reversibility of the baseline model will be respected. 
+        E.g., if the baseline model only allows for the forward reaction,
         then reversibility or backward reactions will not be allowed for any of the new members.
-        If 'ignore', previously irreversible reactions will be allowed to be reversible.
-        Default is 'respect'.
+        If False, previously irreversible reactions will be allowed to be reversible.
+        Default is True.
 
     bound : float or int or None, optional 
         This value is used as the magnitude of the reaction bounds (e.g., ±bound). 
@@ -218,21 +218,14 @@ def _setBounds(model, rxn_ids, method='random', reversibility=None, bound=None, 
     if method not in allowed_methods:
         raise ValueError(f"Invalid method '{method}'. Choose one of {allowed_methods}.")
 
-    allowed_reversibility = ['respect', 'ignore']
-    if reversibility is not None and reversibility not in allowed_reversibility:
-        raise ValueError(f"Invalid reversibility '{reversibility}'. Choose one of {allowed_reversibility}.")
-
     # Set defaults depending on method
     if method == 'random':
-        if reversibility is None:
-            reversibility = 'respect'
         boundsDict = _setBoundsRandom(model, rxn_ids, bound=bound, reversibility=reversibility, n_models=n_models)
 
     elif method == 'onOff':
         if bound is not None:
             warnings.warn("'bound' argument is ignored when method is 'onOff'")
-        if reversibility is not None:
-            warnings.warn("'reversibility' argument is ignored when method is 'onOff'")
+        warnings.warn("'reversibility' argument is ignored when method is 'onOff'")
         if n_models != 100:
             warnings.warn("'n_models' argument is ignored when method is 'onOff'")
         boundsDict = _setBoundsOnOff(model, rxn_ids)
@@ -243,9 +236,6 @@ def _setBounds(model, rxn_ids, method='random', reversibility=None, bound=None, 
         if bound is None:
             bound = 1000
             warnings.warn("No 'bound' provided for method 'fullFactorial'. Defaulting to bound = 1000.")
-        if reversibility is None:
-            reversibility = 'respect'
-            warnings.warn("No 'reversibility' provided for method 'fullFactorial'. Defaulting to reversibility = 'respect'.")
         boundsDict = _setBoundsFullFactorial(model, rxn_ids, bound=bound, reversibility=reversibility)
 
     # Add row for base model at the top
