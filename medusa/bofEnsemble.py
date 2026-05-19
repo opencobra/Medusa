@@ -94,10 +94,19 @@ def bofEnsemble(model, BofDf, BofId=None):
     return ensemble
 
 def _update_dict_from_df_column(metDict, df, col_idx):
-    values = df.iloc[:, col_idx].tolist()
+    # Look up each baseline metabolite by id in the DataFrame's row index so
+    # callers can supply BofDf rows in any order. Zipping by position silently
+    # miswires coefficients when row order differs from reaction.metabolites.
+    col = df.iloc[:, col_idx]
     updated_dict = {}
-    for key, value in zip(metDict.keys(), values):
-        updated_dict[key] = value
+    for met in metDict.keys():
+        if met.id not in col.index:
+            raise KeyError(
+                f"Metabolite '{met.id}' is in the baseline BOF but missing "
+                "from BofDf.index; provide a coefficient for every baseline "
+                "metabolite."
+            )
+        updated_dict[met] = col.loc[met.id]
     return updated_dict
 
 def _getBofId(model):
