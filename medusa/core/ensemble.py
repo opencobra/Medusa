@@ -209,6 +209,7 @@ class Ensemble(Object):
     @classmethod
     def from_reaction_states(cls, model, reaction_id, states,
                              component_attribute='metabolites',
+                             allow_new_metabolites=False,
                              identifier=None, name=None):
         """Build an ensemble whose members differ in a single reaction attribute.
 
@@ -228,6 +229,13 @@ class Ensemble(Object):
         component_attribute : str, optional
             Reaction attribute that varies across members. Defaults to
             'metabolites' (the alternative-biomass-composition use case).
+        allow_new_metabolites : bool, optional
+            Only meaningful when component_attribute='metabolites'. When False
+            (the default), every metabolite referenced by any state must
+            already be in the target reaction; otherwise a ValueError is
+            raised at construction. Set True to allow members to introduce
+            metabolites not in the baseline reaction (e.g. swapping
+            ATP for an alternative energy carrier).
         identifier, name : str, optional
             Passed through to Ensemble.__init__.
 
@@ -247,6 +255,25 @@ class Ensemble(Object):
             raise ValueError(
                 "`states` must be a non-empty dict of {member_id: value}"
             )
+
+        if component_attribute == 'metabolites' and not allow_new_metabolites:
+            existing_met_ids = {met.id for met in reaction.metabolites}
+            for member_id, met_dict in states.items():
+                if not isinstance(met_dict, dict):
+                    raise ValueError(
+                        f"State '{member_id}' must be a dict of "
+                        "{metabolite: coefficient}."
+                    )
+                for met_key in met_dict:
+                    met_id = met_key.id if hasattr(met_key, 'id') else met_key
+                    if met_id not in existing_met_ids:
+                        raise ValueError(
+                            f"State '{member_id}' references metabolite "
+                            f"'{met_id}', which is not in reaction "
+                            f"'{reaction_id}'. Pass "
+                            "allow_new_metabolites=True to introduce new "
+                            "metabolites."
+                        )
 
         feature = Feature(
             identifier=f"{reaction_id}_{component_attribute}",

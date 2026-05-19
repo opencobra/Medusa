@@ -1,5 +1,7 @@
+from cobra.core.model import Model
 from cobra.io import load_model
 from medusa.core.ensemble import Ensemble
+from medusa.core.feature import Feature
 
 from pickle import load
 
@@ -132,6 +134,132 @@ def test_update_member_id():
     
     
 
+
+
+def test_from_reaction_states_metabolites():
+    textbook = load_model("textbook")
+    biomass_id = "Biomass_Ecoli_core"
+    biomass_rxn = textbook.reactions.get_by_id(biomass_id)
+
+    # Pick one metabolite from biomass to vary across two members. Members
+    # only specify the metabolite(s) they want to change; unspecified ones
+    # remain at their baseline coefficient via add_metabolites(combine=False).
+    target_met = next(iter(biomass_rxn.metabolites))
+    states = {
+        "alt_a": {target_met.id: -0.5},
+        "alt_b": {target_met.id: -2.0},
+    }
+
+    ensemble = Ensemble.from_reaction_states(
+        textbook,
+        biomass_id,
+        states,
+        identifier="bof_test",
+    )
+
+    assert len(ensemble.features) == 1
+    feature = ensemble.features[0]
+    assert feature.id == f"{biomass_id}_metabolites"
+    assert feature.component_attribute == "metabolites"
+    assert feature.ensemble is ensemble
+    assert feature.base_component in ensemble.base_model.reactions
+
+    assert {m.id for m in ensemble.members} == {"alt_a", "alt_b"}
+    for member in ensemble.members:
+        assert member.ensemble is ensemble
+        assert len(member.states) == 1
+
+    # set_state must mutate the metabolite coefficient on the base_model
+    # reaction (exercises the metabolites branch in Ensemble.set_state).
+    base_biomass = ensemble.base_model.reactions.get_by_id(biomass_id)
+    ensemble.set_state("alt_a")
+    assert base_biomass.metabolites[target_met] == -0.5
+    ensemble.set_state("alt_b")
+    assert base_biomass.metabolites[target_met] == -2.0
+
+    extracted = ensemble.extract_member("alt_a")
+    assert isinstance(extracted, Model)
+
+
+def test_from_reaction_states_rejects_unknown_metabolites():
+    # By default, referencing a metabolite that is not currently in the
+    # target reaction is a construction-time error.
+    textbook = load_model("textbook")
+    biomass_id = "Biomass_Ecoli_core"
+    biomass = textbook.reactions.get_by_id(biomass_id)
+    biomass_met_ids = {m.id for m in biomass.metabolites}
+
+    # Find a metabolite in the model that is NOT in biomass.
+    foreign_met = next(
+        m for m in textbook.metabolites if m.id not in biomass_met_ids
+    )
+
+    with pytest.raises(ValueError):
+        Ensemble.from_reaction_states(
+            textbook,
+            biomass_id,
+            {"alt": {foreign_met.id: -0.1}},
+        )
+
+
+def test_from_reaction_states_allow_new_metabolites():
+    # With allow_new_metabolites=True, members may introduce metabolites
+    # that are not currently in the baseline reaction (e.g. alternative
+    # energy carriers like swapping ATP for an analogue).
+    textbook = load_model("textbook")
+    biomass_id = "Biomass_Ecoli_core"
+    biomass = textbook.reactions.get_by_id(biomass_id)
+    biomass_met_ids = {m.id for m in biomass.metabolites}
+
+    foreign_met = next(
+        m for m in textbook.metabolites if m.id not in biomass_met_ids
+    )
+
+    ensemble = Ensemble.from_reaction_states(
+        textbook,
+        biomass_id,
+        {"alt": {foreign_met: -0.1}},
+        allow_new_metabolites=True,
+    )
+
+    ensemble.set_state("alt")
+    base_biomass = ensemble.base_model.reactions.get_by_id(biomass_id)
+    base_foreign = ensemble.base_model.metabolites.get_by_id(foreign_met.id)
+    assert base_biomass.metabolites[base_foreign] == -0.1
+
+
+def test_from_reaction_states_validation():
+    textbook = load_model("textbook")
+
+    with pytest.raises(ValueError):
+        Ensemble.from_reaction_states(
+            textbook, "not_a_real_rxn", {"a": {}})
+
+    with pytest.raises(ValueError):
+        Ensemble.from_reaction_states(
+            textbook, "Biomass_Ecoli_core", {})
+
+
+def test_features_kwarg_validation():
+    textbook = load_model("textbook")
+    biomass_id = "Biomass_Ecoli_core"
+    biomass = textbook.reactions.get_by_id(biomass_id)
+    feature = Feature(
+        identifier=f"{biomass_id}_metabolites",
+        base_component=biomass,
+        component_attribute="metabolites",
+        states={"a": {}, "b": {}},
+    )
+
+    # Empty features list — caller opted in but provided nothing.
+    with pytest.raises(ValueError):
+        Ensemble(list_of_models=[textbook], features=[])
+
+    # features supplied alongside the wrong number of models.
+    with pytest.raises(AttributeError):
+        Ensemble(list_of_models=[textbook, textbook], features=[feature])
+    with pytest.raises(AttributeError):
+        Ensemble(list_of_models=[], features=[feature])
 
 
 def test_pickle():
