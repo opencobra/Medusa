@@ -32,10 +32,19 @@ class Ensemble(Object):
         Either a list of existing Model objects in which case a new Model
         object is instantiated and an ensemble is constructed using the list of
         Models, or None/empty list, in which case an ensemble is created with
-        empty attributes.
+        empty attributes. When `features` is provided, this must contain
+        exactly one Model, which is used as the base model.
 
     name : string
         Human-readable name for the ensemble
+
+    features : list of medusa.core.feature.Feature, optional
+        Pre-built Feature objects describing how members vary from the base
+        model. When provided, `list_of_models` must contain exactly one Model.
+        Member ids are taken from the keys of each feature's `states` dict;
+        every supplied feature must define states for exactly the same set of
+        member ids. Each feature's base_component is re-resolved against the
+        base model so set_state mutates the right reaction object.
 
     Attributes
     ----------
@@ -49,8 +58,28 @@ class Ensemble(Object):
         A DictList where the key is the feature identifier and the value is a
         medusa.core.feature.Feature object
     """
-    def __init__(self,list_of_models=[], identifier=None, name=None):
+    def __init__(self, list_of_models=[], identifier=None, name=None,
+                 features=None):
         Object.__init__(self,identifier,name)
+
+        if features is not None and len(features) == 0:
+            raise ValueError(
+                "`features` must be a non-empty list of Feature objects."
+            )
+        if features:
+            if len(list_of_models) != 1:
+                raise AttributeError(
+                    "When `features` is provided, `list_of_models` must "
+                    "contain exactly one cobra.core.Model."
+                )
+            if not isinstance(list_of_models[0], Model):
+                raise AttributeError(
+                    "list_of_models may only contain cobra.core.Model objects"
+                )
+            self.base_model = list_of_models[0]
+            self._attach_prebuilt_features(features)
+            return
+
         if len(list_of_models) > 1:
             if not all(isinstance(x, Model) for x in list_of_models):
                 raise AttributeError("list_of_models may only contain cobra.core.Model objects")
@@ -134,6 +163,104 @@ class Ensemble(Object):
                     self.features.append(feature)
 
         self.base_model = base_model
+
+    def _attach_prebuilt_features(self, features):
+        self.features = DictList()
+        self.members = DictList()
+        base_reaction_ids = {rxn.id for rxn in self.base_model.reactions}
+        for feature in features:
+            component = feature.base_component
+            if not isinstance(component, cobra.core.Reaction):
+                raise AttributeError(
+                    "Only cobra.core.Reaction is supported for "
+                    "feature.base_component"
+                )
+            if component.id not in base_reaction_ids:
+                raise ValueError(
+                    f"Feature '{feature.id}' references reaction "
+                    f"'{component.id}', which is not in the base model."
+                )
+            # Re-resolve to the reaction object that actually lives in
+            # base_model so set_state mutates that one.
+            feature.base_component = self.base_model.reactions.get_by_id(
+                component.id)
+            feature.ensemble = self
+            self.features.append(feature)
+
+        member_ids = list(self.features[0].states.keys())
+        reference_set = set(member_ids)
+        for f in self.features[1:]:
+            if set(f.states.keys()) != reference_set:
+                raise ValueError(
+                    "All supplied features must define states for exactly "
+                    "the same set of member ids."
+                )
+
+        for member_id in member_ids:
+            member_states = {f: f.states[member_id] for f in self.features}
+            member = Member(
+                ensemble=self,
+                identifier=member_id,
+                name=member_id,
+                states=member_states,
+            )
+            self.members += [member]
+
+    @classmethod
+    def from_reaction_states(cls, model, reaction_id, states,
+                             component_attribute='metabolites',
+                             identifier=None, name=None):
+        """Build an ensemble whose members differ in a single reaction attribute.
+
+        Parameters
+        ----------
+        model : cobra.Model
+            The base model; one of its reactions will be varied across members.
+        reaction_id : str
+            Id of the reaction in `model` to vary. Required — no
+            auto-detection from the model objective.
+        states : dict
+            Mapping of member_id -> attribute value. The keys become the
+            ensemble's member ids; no implicit baseline is added. For the
+            default component_attribute='metabolites', each value should be a
+            dict mapping metabolite (id or cobra.Metabolite) to coefficient,
+            suitable for passing to Reaction.add_metabolites(combine=False).
+        component_attribute : str, optional
+            Reaction attribute that varies across members. Defaults to
+            'metabolites' (the alternative-biomass-composition use case).
+        identifier, name : str, optional
+            Passed through to Ensemble.__init__.
+
+        Returns
+        -------
+        Ensemble
+        """
+        if not isinstance(model, Model):
+            raise AttributeError("`model` must be a cobra.core.Model")
+        try:
+            reaction = model.reactions.get_by_id(reaction_id)
+        except KeyError as e:
+            raise ValueError(
+                f"Reaction '{reaction_id}' not found in model."
+            ) from e
+        if not isinstance(states, dict) or len(states) == 0:
+            raise ValueError(
+                "`states` must be a non-empty dict of {member_id: value}"
+            )
+
+        feature = Feature(
+            identifier=f"{reaction_id}_{component_attribute}",
+            name=reaction.name,
+            base_component=reaction,
+            component_attribute=component_attribute,
+            states=dict(states),
+        )
+        return cls(
+            list_of_models=[model],
+            features=[feature],
+            identifier=identifier,
+            name=name,
+        )
 
     def _populate_members(self,list_of_models):
         for model in list_of_models:
