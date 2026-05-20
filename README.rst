@@ -57,7 +57,7 @@ Authors:
 Greg Medlock (glm5uh [at] virginia [dot] edu)
 Jason Papin (papin [at] virginia [dot] edu)
 
-.. |Build Status| image:: https://api.travis-ci.org/gregmedlock/Medusa.svg?branch=master
-   :target: https://travis-ci.org/gregmedlock/Medusa/
+.. |Build Status| image:: https://github.com/opencobra/medusa/actions/workflows/pytest.yml/badge.svg?branch=development
+   :target: https://github.com/opencobra/medusa/actions/workflows/pytest.yml
 .. |PyPI| image:: https://badge.fury.io/py/medusa-cobra.svg
    :target: https://pypi.python.org/pypi/medusa-cobra
