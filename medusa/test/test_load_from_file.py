@@ -11,56 +11,53 @@ def construct_mixed_ensemble_2():
     model1 = load_model("textbook")
     model1.remove_reactions(model1.reactions[1:3])
     model1.id = 'first_textbook'
-    cobra.io.save_json_model(model1, "model1.json")
     model2 = load_model("textbook")
     model2.remove_reactions(model2.reactions[4:6])
     model2.id = 'second_textbook'
-    cobra.io.save_json_model(model2, "model2.json")
     model3 = load_model("textbook")
     model3.remove_reactions(model3.reactions[5:7])
     model3.id = 'third_textbook'
     model3.reactions.get_by_id('SUCCt2_2').lower_bound = -1000
-    cobra.io.save_json_model(model3, "model3.json")
     model4 = model3.copy() # missing rxns [5:7] and has lower_bound=-1000 for SUCCt2_2
     model4.id = 'dual_features'
     model4.reactions[1].lower_bound = 0
-    cobra.io.save_json_model(model4, "model4.json")
     model_list = [model1,model2,model3,model4]
     mixed_ensemble = Ensemble(list_of_models=model_list,identifier='textbook_ensemble')
     return(mixed_ensemble)
 
-def construct_mixed_batch_ensemble():
-    
-    # UPDATE PATHS TO SAVE AND LOAD MODELS
-    
-    # create 4 models, which have reactions removed and a bound difference.
+def construct_mixed_batch_ensemble(tmp_path):
+    # create 4 models, save them under tmp_path, then load them back via
+    # batch_load_from_files so the batch loader is exercised against real files.
     model1 = load_model("textbook")
     model1.remove_reactions(model1.reactions[1:3])
     model1.id = 'first_textbook'
-    cobra.io.save_json_model(model1, "model1.json")
+    cobra.io.save_json_model(model1, str(tmp_path / "model1.json"))
     model2 = load_model("textbook")
     model2.remove_reactions(model2.reactions[4:6])
     model2.id = 'second_textbook'
-    cobra.io.save_json_model(model2, "model2.json")
+    cobra.io.save_json_model(model2, str(tmp_path / "model2.json"))
     model3 = load_model("textbook")
     model3.remove_reactions(model3.reactions[5:7])
     model3.id = 'third_textbook'
     model3.reactions.get_by_id('SUCCt2_2').lower_bound = -1000
-    cobra.io.save_json_model(model3, "model3.json")
+    cobra.io.save_json_model(model3, str(tmp_path / "model3.json"))
     model4 = model3.copy() # missing rxns [5:7] and has lower_bound=-1000 for SUCCt2_2
     model4.id = 'dual_features'
     model4.reactions[1].lower_bound = 0
-    cobra.io.save_json_model(model4, "model4.json")
-    
-    model_file_names = ["model1.json","model2.json","model3.json","model4.json"]
+    cobra.io.save_json_model(model4, str(tmp_path / "model4.json"))
+
+    model_file_names = [
+        str(tmp_path / name)
+        for name in ["model1.json", "model2.json", "model3.json", "model4.json"]
+    ]
     batch_mixed_ensemble = batch_load_from_files(model_file_names,identifier='textbook_ensemble',batchsize = 2)
     return(batch_mixed_ensemble)
 
-def test_batch_load_vs_innate():
+def test_batch_load_vs_innate(tmp_path):
     # Same as basic test, but with a member that had a bound change rather than
     # reaction removal
     test_ensemble = construct_mixed_ensemble_2()
-    test_batch_ensemble = construct_mixed_batch_ensemble()
+    test_batch_ensemble = construct_mixed_batch_ensemble(tmp_path)
     # The base model should have the same number of reactions and metabolites
     # as the original model, since we only remove/modify reactions.
     textbook = load_model("textbook")
@@ -97,9 +94,9 @@ def test_batch_load_vs_innate():
         assert feature.component_attribute in REACTION_ATTRIBUTES
         assert len(set(feature.states.values())) > 1
         
-def test_all_attributes_in_batch_load_model():
+def test_all_attributes_in_batch_load_model(tmp_path):
     test_ensemble = construct_mixed_ensemble_2()
-    test_batch_ensemble = construct_mixed_batch_ensemble()
+    test_batch_ensemble = construct_mixed_batch_ensemble(tmp_path)
     
     # Test number of features and members are equal
     assert len(test_ensemble.features) == len(test_batch_ensemble.features)
