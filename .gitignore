@@ -2,6 +2,7 @@
 
 # Distribution/packaging
 dist/
+*.egg-info/
 
 # compiled python files
 *.pyc
