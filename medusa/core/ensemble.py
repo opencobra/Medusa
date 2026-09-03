@@ -92,6 +92,13 @@ class Ensemble(Object):
             self._populate_members(list_of_models)
 
         else:
+            # An ensemble built from 0 or 1 models has no variable components
+            # yet, but features/members must still exist as empty DictLists so
+            # that attribute access does not raise AttributeError. Callers that
+            # populate them afterwards (e.g. medusa.boundsEnsemble and
+            # medusa.reconstruct.expand) simply overwrite them.
+            self.features = DictList()
+            self.members = DictList()
             if len(list_of_models) == 0:
                 self.base_model = Model(id_or_model=identifier+'_base_model',\
                                         name=name)
