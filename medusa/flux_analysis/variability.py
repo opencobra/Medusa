@@ -74,6 +74,11 @@ def ensemble_fva(ensemble, reaction_list, num_models=[],specific_models=None,
                     ensemble.base_model,reaction_list=reaction_list,
                     fraction_of_optimum=fraction_of_optimum,
                     loopless=loopless,**solver_args)
+            # cobrapy returns the columns in the order ["minimum","maximum"],
+            # so select them by name before relabelling. Assigning positional
+            # labels here silently transposed the two, meaning the row
+            # labelled 'maximum_<member>' held that member's minima.
+            fva_result = fva_result[['maximum','minimum']]
             fva_result.columns = ['maximum_'+model,
                                     'minimum_'+model]
             fva_result = fva_result.T

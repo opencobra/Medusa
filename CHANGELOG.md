@@ -4,6 +4,24 @@ All notable changes to `medusa-cobra` are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `ensemble_fva` no longer transposes each member's minimum and maximum.
+  cobrapy returns the columns ordered `["minimum", "maximum"]` and the result
+  was relabelled positionally as `["maximum_<id>", "minimum_<id>"]`, so every
+  row labelled as a maximum in fact held that member's minima. On the E. coli
+  core model at `fraction_of_optimum=0.1`, PGI's maximum was reported as
+  -46.033 against a reported minimum of 9.982; a reported maximum could be
+  smaller than its own reported minimum. Columns are now selected by name.
+  Present in 0.3.0.
+- `Ensemble` built from zero or one model now exposes empty `features` and
+  `members` DictLists instead of leaving the attributes unassigned, which made
+  ordinary attribute access raise AttributeError. Both shapes are reachable:
+  zero models is the documented way to create an empty ensemble, and the
+  single-model form is what `boundsEnsemble` and `medusa.reconstruct.expand`
+  build before populating features themselves.
+
 ## [0.3.0] - 2026-05-20
 
 ### Added
