@@ -78,7 +78,7 @@ def test_failed_members_are_locatable_from_the_frame(mixed_ensemble):
     assert failed == ["starved"]
 
 
-def test_warn_policy_emits_one_warning_naming_the_member(mixed_ensemble):
+def test_warn_policy_emits_one_warning_counting_the_failures(mixed_ensemble):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         optimize_ensemble(mixed_ensemble, return_flux=FLUXES,
@@ -89,7 +89,24 @@ def test_warn_policy_emits_one_warning_naming_the_member(mixed_ensemble):
     assert len(messages) == 1, (
         "expected exactly one aggregated warning, got %i: %s"
         % (len(messages), messages))
-    assert "starved" in messages[0]
+    assert "1 of 2" in messages[0]
+
+
+def test_warn_policy_does_not_list_member_ids(mixed_ensemble):
+    """An ensemble can hold thousands of members, so the warning counts them.
+
+    The ids stay available on the result, which is where a caller who needs
+    them should look.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        results = optimize_ensemble(mixed_ensemble, return_flux=FLUXES,
+                                    infeasible="warn")
+    message = [str(w.message) for w in caught
+               if "did not solve to optimality" in str(w.message)][0]
+    assert "starved" not in message
+    assert "member_status" in message
+    assert results.attrs["member_status"]["starved"] != "optimal"
 
 
 def test_nan_policy_is_silent(mixed_ensemble):

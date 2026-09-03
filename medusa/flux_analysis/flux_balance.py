@@ -53,11 +53,17 @@ def _apply_infeasible_policy(statuses, infeasible):
             "these members instead of raising."
             % (len(failed), len(statuses), summary))
     if infeasible == 'warn':
+        # Deliberately a count rather than a list of ids. An ensemble can hold
+        # thousands of members, and naming every failure produces a warning
+        # nobody can read. The ids are on the returned frame for anyone who
+        # wants them.
         warnings.warn(
-            "%i of %i ensemble members did not solve to optimality and their "
-            "fluxes were set to NaN: %s. Member statuses are available on the "
-            "returned DataFrame as .attrs['member_status']."
-            % (len(failed), len(statuses), summary),
+            "%i of %i ensemble members did not solve to optimality; their "
+            "fluxes were set to NaN. The affected member ids and their solver "
+            "statuses are on the returned DataFrame as "
+            ".attrs['member_status']; the failed rows are also recoverable "
+            "with results.isna().all(axis=1)."
+            % (len(failed), len(statuses)),
             UserWarning)
 
 
@@ -133,8 +139,10 @@ def optimize_ensemble(ensemble, return_flux = None, num_models = None,
         status. In every case the fluxes reported for such a member are NaN;
         this argument controls only how loudly that is announced.
 
-        - 'warn' (default): emit a single UserWarning naming the affected
-          members once every member has been solved.
+        - 'warn' (default): emit a single UserWarning once every member has
+          been solved, reporting how many members failed. It reports a count
+          rather than a list of ids because an ensemble may hold thousands of
+          members; the ids are available on the result, as described below.
         - 'nan': stay silent. Appropriate for large ensembles in which some
           members are expected to be infeasible under the tested condition.
         - 'raise': raise cobra.exceptions.OptimizationError naming the

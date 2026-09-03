@@ -57,9 +57,14 @@ class Ensemble(Object):
         A DictList where the key is the feature identifier and the value is a
         medusa.core.feature.Feature object
     """
-    def __init__(self, list_of_models=[], identifier=None, name=None,
+    def __init__(self, list_of_models=None, identifier=None, name=None,
                  features=None):
         Object.__init__(self,identifier,name)
+
+        # Defaulting to None rather than [] so the default is not a shared
+        # mutable object.
+        if list_of_models is None:
+            list_of_models = []
 
         if features is not None and len(features) == 0:
             raise ValueError(
@@ -108,10 +113,24 @@ class Ensemble(Object):
             model_rxn_ids = set(rxn.id for rxn in model.reactions)
             new_reactions = model_rxn_ids - all_reactions
             if new_reactions:
-                reactions_to_add = [model.reactions.get_by_id(rxn_id) for rxn_id in new_reactions]
+                # Copy before adding. cobra's add_reactions takes ownership of
+                # the Reaction objects it is given: it reassigns each
+                # reaction._model and remaps its metabolites onto base_model's
+                # copies. Handing it live reactions therefore removes them
+                # from the caller's model, so set_state would go on to mutate
+                # the caller's input and that model would be left structurally
+                # inconsistent. Only list_of_models[0] was protected, by the
+                # .copy() above.
+                reactions_to_add = [
+                    model.reactions.get_by_id(rxn_id).copy()
+                    for rxn_id in sorted(new_reactions)]
                 base_model.add_reactions(reactions_to_add)
                 all_reactions.update(new_reactions)
-        all_reactions = list(all_reactions)
+        # Sorted, not just list(). Iterating the set directly makes the order
+        # of self.features depend on string hash randomization, so two
+        # ensembles built from identical inputs come out with identically
+        # valued but differently ordered features between processes.
+        all_reactions = sorted(all_reactions)
 
         # Pre-cache model reaction attributes in dicts to avoid repeated getattr calls
         model_reaction_attrs = {}
@@ -179,12 +198,24 @@ class Ensemble(Object):
                     f"Feature '{feature.id}' references reaction "
                     f"'{component.id}', which is not in the base model."
                 )
-            # Re-resolve to the reaction object that actually lives in
-            # base_model so set_state mutates that one.
-            feature.base_component = self.base_model.reactions.get_by_id(
-                component.id)
-            feature.ensemble = self
-            self.features.append(feature)
+            # Copy rather than rewire in place. Both `base_component` and
+            # `ensemble` are rebound below, so attaching the caller's own
+            # Feature objects would repoint them at this ensemble; passing the
+            # same feature list to two ensembles used to leave the first one
+            # holding features bound to the second's base model, and
+            # set_state would then mutate the wrong model. The states dict is
+            # copied too, shallowly, so that adding a member to one ensemble
+            # does not appear in the other.
+            attached = Feature(
+                identifier=feature.id,
+                name=feature.name,
+                ensemble=self,
+                base_component=self.base_model.reactions.get_by_id(
+                    component.id),
+                component_attribute=feature.component_attribute,
+                states=dict(feature.states),
+            )
+            self.features.append(attached)
 
         member_ids = list(self.features[0].states.keys())
         reference_set = set(member_ids)
@@ -320,6 +351,18 @@ class Ensemble(Object):
         if isinstance(member, str):
             member = self.members.get_by_id(member)
 
+        # Bounds are collected per reaction and applied together, rather than
+        # written one setattr at a time. cobra validates each assignment
+        # against the bound already in place, so setting lower_bound first
+        # raises whenever the new lower bound exceeds the *old* upper bound.
+        # That happens for any ordinary on/off ensemble: a reaction switched
+        # off holds (0, 0), and switching it back on with a positive minimum
+        # flux (ATPM at 8.39, say) fails with "The lower bound must be less
+        # than or equal to the upper bound". Assigning reaction.bounds as a
+        # pair validates the two together.
+        pending_bounds = {}
+        pending_metabolites = {}
+
         for feature in self.features:
             component = feature.base_component
             attr = feature.component_attribute
@@ -328,16 +371,69 @@ class Ensemble(Object):
             if not isinstance(component, cobra.core.Reaction):
                 raise AttributeError("Only cobra.core.Reaction supported for base_component type")
 
+            if attr in ('lower_bound', 'upper_bound'):
+                bounds = pending_bounds.setdefault(id(component),
+                                                   [component, None, None])
+                bounds[1 if attr == 'lower_bound' else 2] = value
+                continue
+
+            if attr == 'metabolites':
+                pending_metabolites[id(component)] = (component, feature,
+                                                      value)
+                continue
+
             try:
-                # Try direct assignment first
                 setattr(component, attr, value)
             except AttributeError as e:
-                # Handle known read-only attributes 
-                # TODO only metabolites for now , could add to this
-                if attr == "metabolites":
-                    component.add_metabolites(value, combine=False)
-                else:
-                    raise AttributeError(f"Cannot set attribute '{attr}' and no handler is defined for it.") from e
+                raise AttributeError(f"Cannot set attribute '{attr}' and no handler is defined for it.") from e
+
+        for component, lower, upper in pending_bounds.values():
+            current_lower, current_upper = component.bounds
+            component.bounds = (current_lower if lower is None else lower,
+                                current_upper if upper is None else upper)
+
+        for component, feature, value in pending_metabolites.values():
+            self._set_metabolite_state(component, feature, value)
+
+    @staticmethod
+    def _set_metabolite_state(reaction, feature, value):
+        """Apply a 'metabolites' feature state, clearing the previous member's.
+
+        ``add_metabolites(..., combine=False)`` overwrites the coefficients it
+        is given and leaves every other metabolite alone, so a metabolite that
+        one member introduces stays on the reaction when the next member's
+        state does not mention it. Visiting members in a different order then
+        produces different stoichiometry, and re-visiting a member does not
+        reproduce its own first result.
+
+        Every metabolite named by any member's state for this feature is
+        therefore written on every visit, with a coefficient of zero where the
+        current member does not use it. Keys may be Metabolite objects or ids;
+        both are resolved against the reaction's model so the two forms are
+        interchangeable.
+        """
+        model = reaction.model
+
+        def _resolve(key):
+            if not isinstance(key, str):
+                return key
+            if model is not None:
+                return model.metabolites.get_by_id(key)
+            raise KeyError(
+                "Cannot resolve metabolite id %r: the feature's reaction is "
+                "not attached to a model." % key)
+
+        union_ids = {}
+        for state in feature.states.values():
+            for key in state:
+                metabolite = _resolve(key)
+                union_ids[metabolite.id] = metabolite
+
+        payload = {metabolite: 0.0 for metabolite in union_ids.values()}
+        for key, coefficient in value.items():
+            payload[_resolve(key)] = coefficient
+
+        reaction.add_metabolites(payload, combine=False)
 
     def to_pickle(self, filename):
         """

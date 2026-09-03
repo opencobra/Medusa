@@ -47,6 +47,58 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   so no boundary reaction was closed and no leak could have been detected.
 - Row order of the `optimize_ensemble` result no longer depends on
   `num_processes` or on solver timing.
+- `Ensemble.set_state` no longer raises when a reaction with a positive
+  minimum flux is switched off and then back on. It wrote `lower_bound` and
+  `upper_bound` as separate assignments, and cobra validates each against the
+  bound already in place, so any ordinary on/off ensemble failed with "The
+  lower bound must be less than or equal to the upper bound". Bounds are now
+  applied as a pair.
+- `Ensemble.set_state` no longer leaks `metabolites` states between members.
+  `add_metabolites(..., combine=False)` leaves metabolites a previous member
+  introduced in place, so a member's stoichiometry depended on which members
+  had been visited before it and the same member could report two different
+  growth rates.
+- `Ensemble(list_of_models=[...])` no longer mutates the caller's models.
+  Reaction objects from every model after the first were handed to
+  `add_reactions`, which takes ownership of them, leaving those models
+  structurally inconsistent and subject to `set_state`.
+- `Ensemble(..., features=[...])` copies the supplied features instead of
+  rebinding them, so passing one feature list to two ensembles no longer
+  leaves the first pointing at the second's base model.
+- Continuous gapfilling, the default `gapfill_type`, no longer dies inside
+  `add_pfba` with `TypeError: in method 'intArray___setitem__'` from optlang's
+  GLPK backend.
+- `gapfill_to_ensemble` works. It looked up cobrapy's `Reaction` objects as
+  though they were ids, so it always raised `KeyError`.
+- `iterative_gapfill_from_binary_phenotypes` forwards `exchange_prefix`
+  instead of hardcoding `'EX_'`, so non-ModelSEED namespaces are handled.
+- Reactions absent from some gapfill solutions now receive features. An empty
+  set intersection was read as "first member seen", which reset the
+  accumulated intersection and left those reactions switched on in every
+  member, including members whose solution never contained them.
+- `boundsEnsemble` copies the base model, honours a requested bound that is
+  constant across members but different from the base model, and rejects a
+  `boundsDict` whose DataFrames disagree on their member index rather than
+  silently dropping members.
+- `_setBoundsRandom(reversibility=True)` tests reaction reversibility rather
+  than whether a bound happens to be exactly zero, so an irreversible
+  reaction with a nonzero minimum flux is no longer given negative lower
+  bounds. `_setBoundsFullFactorial`'s "active" option no longer forces flux
+  at exactly the bound.
+- `add_ensembles` no longer rewires both of its inputs, keys feature creation
+  by feature id rather than reaction id (so a difference in upper bounds was
+  being dropped whenever a lower_bound feature already existed), and rejects
+  ensembles with overlapping member ids.
+- `batch_load_from_files` no longer raises `IndexError` for ordinary
+  combinations of file count and batch size, and never leaves a batch holding
+  a single model.
+- Feature and solution ordering throughout `Ensemble`, `expand` and
+  `load_from_file` is now sorted rather than set-derived, so identical inputs
+  produce identically ordered ensembles across processes. Previously the
+  order varied with string hash randomization, which a seeded RNG does not
+  control.
+- `gapfill_type` is compared with `==` rather than `is`, removing two
+  SyntaxWarnings and the dependence on CPython string interning.
 
 ### Changed
 - `optimize_ensemble` emits one aggregated warning naming every member that

@@ -193,7 +193,7 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
     # our strategy is to reduce the cost for the reactions returned by the
     # previous solution to 0, such that they are automatically included in
     # the model for the next condition.
-    if gapfill_type is "integer":
+    if gapfill_type == "integer":
         solutions =  _integer_iterative_binary_gapfill(model,
                               phenotype_dict,
                               cycle_order,
@@ -204,7 +204,7 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
                               demand_reactions=demand_reactions,
                               exchange_reactions=exchange_reactions,
                               integer_threshold=inclusion_threshold)
-    elif gapfill_type is "continuous":
+    elif gapfill_type == "continuous":
         solutions = _continuous_iterative_binary_gapfill(model,
                               phenotype_dict,
                               cycle_order,
@@ -215,7 +215,7 @@ def iterative_gapfill_from_binary_phenotypes(model,universal,phenotype_dict,
                               demand_reactions=demand_reactions,
                               exchange_reactions=exchange_reactions,
                               flux_cutoff=inclusion_threshold,
-                              exchange_prefix='EX_')
+                              exchange_prefix=exchange_prefix)
 
     ensemble =_build_ensemble_from_gapfill_solutions(model,solutions,
                                                     universal=universal)
@@ -270,6 +270,29 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
     original_reaction_ids = [reaction.id for reaction
                                 in original_model_reactions]
 
+    # Rebuild the solver before anything reads a variable index.
+    #
+    # optlang batches pending modifications, and its GLPK backend adds
+    # constraints with sloppy=True, which assumes every referenced variable
+    # already carries an index. After the remove_reactions / add_reactions
+    # pair above, the pending batch is internally inconsistent: it holds a
+    # constraint referencing a variable whose _index is still None. add_pfba
+    # then reads reaction.forward_variable, which flushes the batch, and the
+    # flush dies with
+    #     TypeError: in method 'intArray___setitem__', argument 3 of type 'int'
+    #
+    # An incremental gapfiller.solver.update() does not help, in either
+    # position, because it walks that same broken batch. Reassigning
+    # gapfiller.solver does not help either: the value resolves to the
+    # interface the model already has, and cobra's setter returns early when
+    # the interface is unchanged, so nothing is rebuilt.
+    #
+    # Model.copy() constructs a fresh problem from the model's current
+    # contents, discarding the batch. It costs O(model size) but runs once per
+    # gapfiller rather than once per cycle. Nothing below holds a reference to
+    # a Reaction object from before this point; the code works from
+    # original_reaction_ids and other id lists.
+    gapfiller = gapfiller.copy()
 
     # Add the pFBA constraints and objective (minimizes sum of fluxes)
     add_pfba(gapfiller)
@@ -364,7 +387,7 @@ def _continuous_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
                 ex_rxn.lower_bound = 0
 
         gapfiller.objective.set_linear_coefficients(original_coefficients)
-        solutions.append(list(cycle_reactions))
+        solutions.append(sorted(cycle_reactions))
     return solutions
 
 
@@ -407,7 +430,7 @@ def _integer_iterative_binary_gapfill(model,phenotype_dict,cycle_order,
                 if reaction_indicator.rxn_id in cycle_reactions:
                     gapfiller.costs[reaction_indicator] = 0
             gapfiller.model.objective.set_linear_coefficients(gapfiller.costs)
-        solutions.append(list(cycle_reactions))
+        solutions.append(sorted(cycle_reactions))
         gapfiller.model.objective.set_linear_coefficients(original_costs)
     return solutions
 
@@ -423,8 +446,16 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
     i = 0
     for solution in solutions:
         solution_id = model.id + '_gapfilled_' + str(i)
-        solution_as_rxn_objs = [universal.reactions.get_by_id(rxn).copy()
-                                    for rxn in solution]
+        # Solutions arrive in two shapes. The private iterative helpers in
+        # this module accumulate reaction ids, while cobrapy's GapFiller.fill
+        # returns lists of Reaction objects, which is what gapfill_to_ensemble
+        # passes here. Looking those up as ids raised
+        # KeyError: <Reaction PGK at 0x...>, so gapfill_to_ensemble could
+        # never return an ensemble. Normalize to ids and accept both.
+        solution_as_rxn_objs = [
+            universal.reactions.get_by_id(
+                rxn if isinstance(rxn, str) else rxn.id).copy()
+            for rxn in solution]
         solution_dict[solution_id] = DictList() + solution_as_rxn_objs
         i += 1
 
@@ -443,16 +474,20 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
     used_members = []
     duplicate_solutions = []
     all_reactions = set()
-    in_all = set()
+    # None, not an empty set, marks "no member seen yet". Testing the set's
+    # truthiness conflated that with an intersection that had legitimately
+    # become empty, which reset in_all to the current member's whole solution.
+    # Every reaction outside that solution was then treated as present in all
+    # members, so it got no Feature and was left switched on in every member,
+    # including members whose gapfill solution never contained it.
+    in_all = None
     for member_id in solutions_as_ids.keys():
         used_members.append(member_id)
         member_solution = set(solutions_as_ids[member_id])
-        if in_all:
-            in_all = member_solution & in_all
-        #if this is the first ensemble member, set intersection will fail
-        # because of the empty set, so we need this exception
-        else:
+        if in_all is None:
             in_all = member_solution
+        else:
+            in_all = member_solution & in_all
         all_reactions = all_reactions | member_solution
         for other_member in solutions_as_ids.keys():
             if other_member not in used_members:
@@ -469,20 +504,25 @@ def _build_ensemble_from_gapfill_solutions(model,solutions,universal=None):
 
     # Reactions that need features are those that were not in all the gapfill
     # solutions.
-    reactions_needing_features = list(all_reactions - in_all)
+    # sorted, not list(): iterating the set makes feature order depend on
+    # string hash randomization, so identical inputs give differently
+    # ordered ensembles across processes even with a seeded RNG.
+    in_all = set() if in_all is None else in_all
+    reactions_needing_features = sorted(all_reactions - in_all)
     reactions_needing_features_objs = [
                     universal.reactions.get_by_id(rxn).copy()
                     for rxn in reactions_needing_features]
 
     # add reaction objects to the base model for all reactions
     all_reactions_as_objects = [universal.reactions.get_by_id(rxn).copy()
-                                for rxn in all_reactions]
+                                for rxn in sorted(all_reactions)]
     ensemble.base_model.add_reactions(all_reactions_as_objects)
 
     # add metabolite objects to the base model for all new metabolites from
     # the new reactions
     mets = [x.metabolites for x in all_reactions_as_objects]
-    all_keys = set().union(*(d.keys() for d in mets))
+    all_keys = sorted(set().union(*(d.keys() for d in mets)),
+                      key=lambda met: met.id)
     ensemble.base_model.add_metabolites(all_keys)
 
     print('building features...')
