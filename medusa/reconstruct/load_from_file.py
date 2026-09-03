@@ -29,6 +29,55 @@ def parent_attr_of_base_component(base_comp):
     
     return parent_attr
     
+def _batch_indices(total, batchsize):
+    """Split range(total) into batches, never leaving a batch of one.
+
+    A batch holding a single model produces an ensemble with no features,
+    which cannot be merged. The previous implementation tried to repair that
+    by moving an element out of the second-to-last batch, but it indexed
+    ``range_lists[iterations-2][batchsize-1]`` unconditionally: with a single
+    batch that wraps around to the same list, and it assumes the preceding
+    batch is full. Both raised IndexError for ordinary inputs, among them
+    (1 file, batchsize 5), (5, 1) and (5, 2).
+
+    Parameters
+    ----------
+    total : int
+        Number of models to load.
+    batchsize : int
+        Maximum models held in memory at once. Must be at least 2, since a
+        batch of one cannot contribute features.
+
+    Returns
+    -------
+    list of list of int
+    """
+    if batchsize < 2:
+        raise ValueError(
+            "batchsize must be at least 2; a batch of one model yields an "
+            "ensemble with no features, which cannot be merged. Got %r."
+            % (batchsize,))
+    if total < 2:
+        raise ValueError(
+            "At least 2 models are required to build an ensemble; got %i."
+            % total)
+
+    batches = [list(range(start, min(start + batchsize, total)))
+               for start in range(0, total, batchsize)]
+
+    if len(batches) > 1 and len(batches[-1]) == 1:
+        # Prefer moving one model back from the previous batch, which keeps
+        # every batch within batchsize. That only works if the previous batch
+        # can spare one and still hold two; otherwise absorb the stray model,
+        # which exceeds batchsize by one but never strands a batch of one.
+        if len(batches[-2]) >= 3:
+            batches[-1].insert(0, batches[-2].pop())
+        else:
+            batches[-2].extend(batches.pop())
+
+    return batches
+
+
 def batch_load_from_files(model_file_names, identifier='ensemble', batchsize=5, verbose = False):
     
     """
@@ -44,21 +93,7 @@ def batch_load_from_files(model_file_names, identifier='ensemble', batchsize=5, 
         Total number of models loaded into memory.
     """
     
-    total = len(model_file_names)
-    range_lists = []
-    iterations = math.ceil(total/batchsize)
-    fix_last = 0
-    for i in range(iterations):
-        start = batchsize*i
-        stop = batchsize*(1+i)
-        if stop > total:
-            stop = total
-        if len(range(start,stop)) == 1:
-            fix_last = 1
-        range_lists.append(list(range(start,stop)))
-    if fix_last == 1:
-        range_lists[iterations-1] = [range_lists[iterations-2][batchsize-1]] + range_lists[iterations-1]
-        del range_lists[iterations-2][batchsize-1]
+    range_lists = _batch_indices(len(model_file_names), batchsize)
 
     for range_list in range_lists:
         model_list = []
@@ -97,10 +132,26 @@ def add_ensembles(e1,e2,verbose=False):
             Generated using medusa.core.Ensemble()
     """
     
-    # Deep copy ensembles
-    emodel1 = e1
-    emodel2 = e2
+    # Deep copy ensembles.
+    #
+    # All three must be copies. Only emodel3 used to be one, and the deepcopy
+    # was then thrown away by `emodel3.members = emodel1.members + ...`, which
+    # reuses the caller's own Member objects. The loop at the end rebinds
+    # member.ensemble and member.states on them, and add_reactions below takes
+    # ownership of e2's Reaction objects, so a single call left both inputs
+    # rewired to point at the merged ensemble: e1.extract_member would go on
+    # to operate on e3's base model and return reactions belonging to e2.
+    emodel1 = copy.deepcopy(e1)
+    emodel2 = copy.deepcopy(e2)
     emodel3 = copy.deepcopy(e1)
+
+    shared_member_ids = ({member.id for member in e1.members} &
+                         {member.id for member in e2.members})
+    if shared_member_ids:
+        raise ValueError(
+            "The two ensembles share member id(s): %s. Merging would produce "
+            "an ensemble with duplicate members."
+            % ', '.join(sorted(shared_member_ids)[:10]))
 
     # Add reactions to new base_model: Base_model1 + Base_model2 = base_model3
     base_model = copy.deepcopy(emodel1.base_model)
@@ -121,7 +172,7 @@ def add_ensembles(e1,e2,verbose=False):
     old_feats = all_feats - new_feats
 
     # Add new features to base ensemble
-    for feat_id in new_feats:
+    for feat_id in sorted(new_feats):
         feat = emodel2.features.get_by_id(feat_id)
         emodel3.features = emodel3.features + [feat]
 
@@ -154,46 +205,61 @@ def add_ensembles(e1,e2,verbose=False):
     
     # Create features for reactions missing from either base_model without an existing feature
     missing_rxns = (em2_rxns - em1_rxns) | (em1_rxns - em2_rxns)
-    exist_feat_ids = set([feat.base_component.id for feat in emodel3.features])
+    # Keyed by feature id, not reaction id. Keyed by reaction, a reaction that
+    # already carried a lower_bound feature was excluded outright, so it could
+    # never be given the upper_bound feature it also needed: a genuine
+    # difference in upper bounds between the two ensembles was dropped, and
+    # the merged members silently kept whichever value e1 happened to hold.
+    exist_feat_ids = set([feat.id for feat in emodel3.features])
     attr_list = ['lower_bound','upper_bound']
-    states1 = emodel1.features[0].states
-    states2 = emodel2.features[0].states
-    for rxn_id in missing_rxns:
-        if not rxn_id in exist_feat_ids:
-            for attr_str in attr_list:
-                if rxn_id in em1_rxns:
-                    attr1 = getattr(getattr(emodel1.base_model, "reactions").get_by_id(rxn_id), attr_str)
-                else:
-                    attr1 = 0.0
-                if rxn_id in em2_rxns:
-                    attr2 = getattr(getattr(emodel2.base_model, "reactions").get_by_id(rxn_id), attr_str)
-                else:
-                    attr2 = 0.0
-                rxn_from_base = emodel3.base_model.reactions.get_by_id(rxn_id)
-                feature_id = rxn_from_base.id + '_' + attr_str
-                states1 = dict.fromkeys(states1, attr1)
-                states2 = dict.fromkeys(states2, attr2)
-                states = dict(states1, **states2)
-                feature = Feature(ensemble=emodel3,\
-                        identifier=feature_id,\
-                        name=rxn_from_base.name,\
-                        base_component=rxn_from_base,\
-                        component_attribute=attr_str,\
-                        states=states)
-                emodel3.features = emodel3.features + [feature]
-                if verbose == True:
-                    print("New feature added: " + feature_id)
+    # Member ids come from the members themselves. Reading them off
+    # features[0] raised IndexError for any ensemble with no features, which
+    # is what a one-model batch produces.
+    states1 = {member.id: None for member in emodel1.members}
+    states2 = {member.id: None for member in emodel2.members}
+    for rxn_id in sorted(missing_rxns):
+        for attr_str in attr_list:
+            if rxn_id + '_' + attr_str in exist_feat_ids:
+                continue
+            if rxn_id in em1_rxns:
+                attr1 = getattr(getattr(emodel1.base_model, "reactions").get_by_id(rxn_id), attr_str)
+            else:
+                attr1 = 0.0
+            if rxn_id in em2_rxns:
+                attr2 = getattr(getattr(emodel2.base_model, "reactions").get_by_id(rxn_id), attr_str)
+            else:
+                attr2 = 0.0
+            rxn_from_base = emodel3.base_model.reactions.get_by_id(rxn_id)
+            feature_id = rxn_from_base.id + '_' + attr_str
+            states1 = dict.fromkeys(states1, attr1)
+            states2 = dict.fromkeys(states2, attr2)
+            states = dict(states1, **states2)
+            feature = Feature(ensemble=emodel3,\
+                    identifier=feature_id,\
+                    name=rxn_from_base.name,\
+                    base_component=rxn_from_base,\
+                    component_attribute=attr_str,\
+                    states=states)
+            emodel3.features = emodel3.features + [feature]
+            if verbose == True:
+                print("New feature added: " + feature_id)
 
     # Check for new features that need to be added because the base models don't align
         # Needs to be generalized to all feature types beyond reactions
-    ovrlp_rxns = (em1_rxns & em2_rxns) - exist_feat_ids
+    # Subtracting a set of *reaction* ids here excluded both attributes of any
+    # reaction that already had one feature; the per-attribute check below is
+    # what actually belongs. Recomputed because the loop above added features.
+    exist_feat_ids = set([feat.id for feat in emodel3.features])
+    ovrlp_rxns = em1_rxns & em2_rxns
 
     attr_list = ['lower_bound','upper_bound']
-    states1 = emodel1.features[0].states
-    states2 = emodel2.features[0].states
+    states1 = {member.id: None for member in emodel1.members}
+    states2 = {member.id: None for member in emodel2.members}
 
-    for rxn_id in ovrlp_rxns:
+    for rxn_id in sorted(ovrlp_rxns):
         for attr_str in attr_list:
+            if rxn_id + '_' + attr_str in exist_feat_ids:
+                continue
             attr1 = getattr(getattr(emodel1.base_model, "reactions").get_by_id(rxn_id), attr_str)
             attr2 = getattr(getattr(emodel2.base_model, "reactions").get_by_id(rxn_id), attr_str)
             if attr1 != attr2:
@@ -214,8 +280,8 @@ def add_ensembles(e1,e2,verbose=False):
     
     # Set feature.states
     for feature_obj in emodel3.features:
-        dict1_zeros = dict.fromkeys(emodel1.features[0].states, 0.0)
-        dict2_zeros = dict.fromkeys(emodel2.features[0].states, 0.0)
+        dict1_zeros = {member.id: 0.0 for member in emodel1.members}
+        dict2_zeros = {member.id: 0.0 for member in emodel2.members}
         if feature_obj.id in em1_feats:
             dict1 = emodel1.features.get_by_id(feature_obj.id).states
         elif feature_obj.base_component.id in em1_rxns:

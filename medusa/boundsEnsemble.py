@@ -33,36 +33,86 @@ def boundsEnsemble(model, boundsDict):
         An ensemble where each member has accordingly adjusted reaction bounds
     '''
 
-    # Setup ensemble structure base on single baseline model
-    ensemble = Ensemble([model],
+    if not boundsDict:
+        raise ValueError("boundsDict is empty; it must map at least one "
+                         "reaction id to a DataFrame of bounds.")
+
+    # Every reaction's DataFrame must describe the same members. Taking the
+    # index of whichever reaction happened to come first silently dropped any
+    # member that appeared only in a later reaction's frame, while leaving
+    # that member's value sitting in the feature's states dict.
+    reference_id = next(iter(boundsDict))
+    ids = list(boundsDict[reference_id].index)
+    for rxn_id, frame in boundsDict.items():
+        missing_columns = [attr for attr in REACTION_ATTRIBUTES
+                           if attr not in frame.columns]
+        if missing_columns:
+            raise ValueError(
+                "boundsDict['%s'] is missing required column(s): %s"
+                % (rxn_id, ', '.join(missing_columns)))
+        if list(frame.index) != ids:
+            raise ValueError(
+                "Every DataFrame in boundsDict must be indexed by the same "
+                "member ids in the same order. boundsDict['%s'] has %i "
+                "member(s) and boundsDict['%s'] has %i."
+                % (reference_id, len(ids), rxn_id, len(frame.index)))
+
+    # Copy. Ensemble's single-model path assigns base_model without copying,
+    # so set_state would otherwise permanently rewrite the caller's model;
+    # after an on/off run the caller's reaction was left at (0, 0).
+    ensemble = Ensemble([model.copy()],
                         identifier = "placeholderId",
                         name = "placeholderName")
     ensemble.features = DictList()
     ensemble.members = DictList()
 
     # Set features, similar to _populate_features_base()
-    for rxn_id in boundsDict.keys():
+    for rxn_id in sorted(boundsDict.keys()):
         for attr in REACTION_ATTRIBUTES:
-            if boundsDict[rxn_id][attr].nunique() > 1:
-                rxn_base = ensemble.base_model.reactions.get_by_id(rxn_id)
-                feature_id = f"{rxn_id}_{attr}"
+            rxn_base = ensemble.base_model.reactions.get_by_id(rxn_id)
+            column = boundsDict[rxn_id][attr]
 
-                # Create states dict for feature
-                states = boundsDict[rxn_id][attr].to_dict()
+            if column.nunique() <= 1:
+                # Constant across members, but not necessarily equal to the
+                # base model. nunique() only measures variation *within*
+                # boundsDict; unlike _populate_features_base, the base model
+                # here is an independent input. A user asking for the same
+                # non-default bound in every member used to get no feature and
+                # no change at all, so the request vanished silently. Since
+                # the value does not vary, it belongs on the base model rather
+                # than in a Feature.
+                if len(column):
+                    requested = column.iloc[0]
+                    current = getattr(rxn_base, attr)
+                    if requested != current:
+                        lower, upper = rxn_base.bounds
+                        if attr == 'lower_bound':
+                            rxn_base.bounds = (requested, max(upper, requested))
+                        else:
+                            rxn_base.bounds = (min(lower, requested), requested)
+                continue
 
-                # Create and add the Feature object
-                feature = Feature(
-                    ensemble=ensemble,
-                    identifier=feature_id,
-                    name=rxn_base.name,
-                    base_component=rxn_base,
-                    component_attribute=attr,
-                    states=states,
-                )
-                ensemble.features.append(feature)
-    
-    names = [ensemble.base_model.name] + ['placeholderName' for _ in range(len(boundsDict[next(iter(boundsDict))].index) - 1)]
-    ids = list(boundsDict[next(iter(boundsDict))].index)
+            feature_id = f"{rxn_id}_{attr}"
+
+            # Create states dict for feature
+            states = boundsDict[rxn_id][attr].to_dict()
+
+            # Create and add the Feature object
+            feature = Feature(
+                ensemble=ensemble,
+                identifier=feature_id,
+                name=rxn_base.name,
+                base_component=rxn_base,
+                component_attribute=attr,
+                states=states,
+            )
+            ensemble.features.append(feature)
+
+    # _setBounds prepends a row for the base model, so its id is usually the
+    # first entry. That is a property of that helper, not of boundsDict in
+    # general, so it is checked rather than assumed.
+    names = [ensemble.base_model.name if member_id == ensemble.base_model.id
+             else member_id for member_id in ids]
 
     # Populate members, similar to _populate_members()
     for i in range(0,len(ids)):
@@ -98,9 +148,17 @@ def _setBoundsRandom(model, rxn_ids, bound=None, reversibility=True, n_models=10
 
     if reversibility:
         for rxn_id in rxn_ids:
-            if model.reactions.get_by_id(rxn_id).lower_bound == 0:
+            reaction = model.reactions.get_by_id(rxn_id)
+            # Test the reaction's reversibility, not whether a bound happens
+            # to be exactly zero. ATPM is (8.39, 1000): irreversible, but
+            # neither bound is 0, so the old check let it be assigned negative
+            # lower bounds even though the caller asked for reversibility to
+            # be respected.
+            if reaction.reversibility:
+                continue
+            if reaction.lower_bound >= 0:
                 boundsDict[rxn_id].lower_bound = 0
-            if model.reactions.get_by_id(rxn_id).upper_bound == 0:
+            if reaction.upper_bound <= 0:
                 boundsDict[rxn_id].upper_bound = 0
 
     return boundsDict
@@ -133,11 +191,22 @@ def _setBoundsFullFactorial(model, rxn_ids, bound=None, reversibility=True):
     if reversibility:
         bound_options_dict = {}
         for rxn_id in rxn_ids:
-            if model.reactions.get_by_id(rxn_id).reversibility:
+            reaction = model.reactions.get_by_id(rxn_id)
+            if reaction.reversibility:
                 bound_options_dict[rxn_id] = default_options
             else:
-                bound_options_dict[rxn_id] = [(0, 0), 
-                                              tuple(bound * (x / abs(x)) if x != 0 else 0 for x in model.reactions.get_by_id(rxn_id).bounds)]
+                # The "active" option for an irreversible reaction is the
+                # reaction open to `bound` in its own direction. Scaling each
+                # bound by its own sign instead mapped ATPM's (8.39, 1000) to
+                # (1000, 1000), which does not mean "active up to 1000" but
+                # "forced to carry exactly 1000".
+                if reaction.lower_bound >= 0 and reaction.upper_bound > 0:
+                    active = (0, abs(bound))
+                elif reaction.upper_bound <= 0 and reaction.lower_bound < 0:
+                    active = (-abs(bound), 0)
+                else:
+                    active = (0, 0)
+                bound_options_dict[rxn_id] = [(0, 0), active]
     else:    
         bound_options_dict = {rxn_id: default_options for rxn_id in rxn_ids}
 
