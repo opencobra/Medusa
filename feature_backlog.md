@@ -54,3 +54,20 @@ giving three copies overall.
 **Why deferred:** Each constructor is correct on its own. This is
 structural cleanup best done alongside the next ensemble-constructor
 addition, not in the PR that surfaced it.
+
+**Update — 2026-09-03.** The capability gap is closed:
+`Ensemble.from_state_matrix` with a `(reaction_id, component_attribute)`
+MultiIndex builds an ensemble varying bounds and biomass coefficients
+together. `bofEnsemble` no longer exists, having been replaced by
+`Ensemble.from_reaction_states` in #133.
+
+The *structural* half of this entry is now more pressing rather than
+less. There are three ways to build a bounds-varying ensemble:
+`Ensemble(list_of_models=...)`, `boundsEnsemble`, and
+`from_state_matrix`. The last two take essentially the same information
+in different shapes — a dict of per-reaction DataFrames versus one
+member-by-feature DataFrame — and differ only in that `boundsEnsemble`
+is bounds-only while `from_state_matrix` handles any
+component_attribute. The open question is whether `from_state_matrix`
+should absorb `boundsEnsemble` outright, with `_setBounds` retargeted to
+emit a state matrix, rather than the two continuing side by side.

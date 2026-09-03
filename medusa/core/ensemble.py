@@ -18,6 +18,88 @@ import pandas as pd
 REACTION_ATTRIBUTES = ['lower_bound', 'upper_bound']
 MISSING_ATTRIBUTE_DEFAULT = {'lower_bound':0,'upper_bound':0}
 
+# Number of ids listed before truncating an error message.
+_MAX_IDS_IN_ERROR = 10
+
+
+def _canonicalize_state(value):
+    """Return a hashable, order-insensitive stand-in for a feature state.
+
+    Most component_attributes (e.g. 'lower_bound') hold scalars, which are
+    already hashable and are returned unchanged. The 'metabolites' attribute
+    holds a dict of {metabolite_or_id: coefficient}, which is neither hashable
+    nor order-stable, so it is canonicalized to a sorted tuple of
+    (str(key), value) pairs. str() is used on the key because cobra Objects
+    stringify to their id, so a dict keyed by Metabolite objects and one keyed
+    by the equivalent metabolite ids canonicalize identically.
+
+    This exists so that "does this feature vary across members?" can be
+    answered the same way for scalar- and dict-valued states.
+    """
+    if isinstance(value, dict):
+        # Sort on the stringified key alone. Sorting whole pairs would fall
+        # through to comparing the values whenever two keys tie, which can
+        # raise for mixed value types.
+        return tuple(sorted(((str(key), value[key]) for key in value),
+                            key=lambda item: item[0]))
+    return value
+
+
+def _is_missing_state(value):
+    """True if value should be treated as a missing (NaN) cell.
+
+    Guards pandas.isna against container values: a dict-valued state (the
+    'metabolites' case) is never missing, and pandas.isna would return an
+    array rather than a bool for some containers.
+    """
+    if isinstance(value, dict):
+        return False
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _states_vary(states):
+    """True if a feature's states are not identical across all members.
+
+    states : dict of {member_id: value}, i.e. the same structure as
+    Feature.states. Values are canonicalized first so that dict-valued states
+    ('metabolites') can be compared.
+    """
+    canonical = [_canonicalize_state(value) for value in states.values()]
+    if len(canonical) < 2:
+        return False
+    try:
+        return len(set(canonical)) > 1
+    except TypeError:
+        # Fall back for values that resist hashing even after
+        # canonicalization (e.g. a list-valued state).
+        first = canonical[0]
+        return any(other != first for other in canonical[1:])
+
+
+def _find_duplicates(ids):
+    """Return the duplicated ids in `ids`, in first-seen order."""
+    seen = set()
+    duplicates = []
+    for identifier in ids:
+        if identifier in seen and identifier not in duplicates:
+            duplicates.append(identifier)
+        seen.add(identifier)
+    return duplicates
+
+
+def _truncated_id_list(ids):
+    """Format ids for an error message, capping the number shown."""
+    ids = list(ids)
+    shown = ids[:_MAX_IDS_IN_ERROR]
+    message = ", ".join(str(i) for i in shown)
+    if len(ids) > len(shown):
+        message += " ... (%i total)" % len(ids)
+    return message
+
+
 class Ensemble(Object):
     """
     Ensemble of metabolic models
@@ -295,6 +377,200 @@ class Ensemble(Object):
             name=name,
         )
 
+    @classmethod
+    def from_state_matrix(cls, model, state_matrix,
+                          component_attribute='lower_bound',
+                          identifier=None, name=None, drop_invariant=True,
+                          missing_value=None):
+        """Build an ensemble from an explicit member x feature state matrix.
+
+        This is the general-purpose complement to the other two construction
+        routes: `Ensemble(list_of_models=[...])` infers features by diffing
+        whole models, `Ensemble.from_reaction_states` varies one reaction
+        across many members, and this varies many reactions across many
+        members without requiring a Model object per member.
+
+        As with `from_reaction_states`, `model` is used directly as the
+        ensemble's `base_model` (it is not copied), so `set_state` mutates the
+        Model object that was passed in.
+
+        Parameters
+        ----------
+        model : cobra.Model
+            The base model. Every reaction id referenced by `state_matrix`
+            must already exist in this model; reactions are never added.
+        state_matrix : pandas.DataFrame
+            Index is member ids (coerced to str). Columns are either
+
+            (a) reaction ids, in which case every column targets
+                `component_attribute`; or
+            (b) a 2-level pandas.MultiIndex of
+                (reaction_id, component_attribute), which overrides the
+                `component_attribute` argument on a per-column basis. This is
+                how you build an ensemble in which some reactions vary in
+                their lower bound and others in their upper bound.
+
+            Values are the state for that member and feature.
+        component_attribute : str, optional
+            Reaction attribute targeted by every column, used only when
+            `state_matrix.columns` is not a MultiIndex. Defaults to
+            'lower_bound'.
+
+            `component_attribute='metabolites'` is supported: states are then
+            {metabolite_or_id: coefficient} dicts, because `set_state` routes
+            that attribute through `Reaction.add_metabolites(..., combine=False)`
+            rather than `setattr`. Invariance testing handles dict-valued cells
+            by comparing canonicalized (sorted-tuple) representations.
+        identifier, name : str, optional
+            Passed through to Ensemble.__init__.
+        drop_invariant : bool, optional
+            When True (the default), columns whose values do not vary across
+            members are skipped, matching the `nunique() > 1` behaviour of
+            `_populate_features_base`. With `drop_invariant=False` you get
+            Feature objects whose state is the same for every member. That is
+            legal — `set_state` will happily set a constant — but it is usually
+            a mistake: such a feature adds no ensemble structure, inflates
+            `len(ensemble.features)`, and makes every downstream diversity or
+            saturation statistic look better than it is.
+        missing_value : optional
+            Value substituted for NaN cells. When None (the default), the
+            fallback is `MISSING_ATTRIBUTE_DEFAULT[component_attribute]` for
+            the column's attribute; if that attribute has no entry there (e.g.
+            'metabolites'), a NaN cell raises ValueError. The lookup is lazy:
+            an attribute with no default is only an error if the matrix
+            actually contains a missing cell for it. Note that None therefore
+            cannot be used as an explicit fill value.
+
+        Returns
+        -------
+        Ensemble
+        """
+        if not isinstance(model, Model):
+            raise AttributeError("`model` must be a cobra.core.Model")
+        if not isinstance(state_matrix, pd.DataFrame):
+            raise AttributeError(
+                "`state_matrix` must be a pandas.DataFrame with member ids "
+                "as the index and features as the columns."
+            )
+        if state_matrix.shape[0] == 0:
+            raise ValueError(
+                "`state_matrix` has no rows; it must contain at least one "
+                "member id in its index."
+            )
+        if state_matrix.shape[1] == 0:
+            raise ValueError(
+                "`state_matrix` has no columns; it must contain at least one "
+                "reaction id in its columns."
+            )
+
+        member_ids = [str(member_id) for member_id in state_matrix.index]
+        duplicates = _find_duplicates(member_ids)
+        if duplicates:
+            raise ValueError(
+                "`state_matrix` contains duplicate member ids: %s"
+                % _truncated_id_list(duplicates)
+            )
+
+        # Resolve each column to a (reaction_id, component_attribute) pair.
+        if isinstance(state_matrix.columns, pd.MultiIndex):
+            if state_matrix.columns.nlevels != 2:
+                raise ValueError(
+                    "A MultiIndex on `state_matrix.columns` must have exactly "
+                    "2 levels, (reaction_id, component_attribute); got %i."
+                    % state_matrix.columns.nlevels
+                )
+            column_targets = [
+                (column, (str(column[0]), str(column[1])))
+                for column in state_matrix.columns]
+        else:
+            column_targets = [
+                (column, (str(column), component_attribute))
+                for column in state_matrix.columns]
+
+        base_reaction_ids = {rxn.id for rxn in model.reactions}
+        missing_reactions = []
+        seen_missing = set()
+        for column, (reaction_id, attribute) in column_targets:
+            if reaction_id not in base_reaction_ids and \
+                    reaction_id not in seen_missing:
+                missing_reactions.append(reaction_id)
+                seen_missing.add(reaction_id)
+        if missing_reactions:
+            raise KeyError(
+                "`state_matrix` references reaction ids that are not in "
+                "`model`: %s" % _truncated_id_list(missing_reactions)
+            )
+
+        duplicate_features = _find_duplicates(
+            f"{reaction_id}_{attribute}"
+            for column, (reaction_id, attribute) in column_targets)
+        if duplicate_features:
+            raise ValueError(
+                "`state_matrix` columns map to duplicate feature ids: %s. "
+                "Each (reaction_id, component_attribute) pair may appear at "
+                "most once." % _truncated_id_list(duplicate_features)
+            )
+
+        features = []
+        for column, (reaction_id, attribute) in column_targets:
+            reaction = model.reactions.get_by_id(reaction_id)
+
+            fill = missing_value
+            states = {}
+            for member_id, value in zip(member_ids, state_matrix[column]):
+                if _is_missing_state(value):
+                    if fill is None:
+                        if attribute not in MISSING_ATTRIBUTE_DEFAULT:
+                            raise ValueError(
+                                f"`state_matrix` has a missing value for "
+                                f"reaction '{reaction_id}', attribute "
+                                f"'{attribute}', member '{member_id}', but "
+                                f"'{attribute}' has no entry in "
+                                "MISSING_ATTRIBUTE_DEFAULT. Pass an explicit "
+                                "`missing_value`, or fill the matrix before "
+                                "calling from_state_matrix."
+                            )
+                        fill = MISSING_ATTRIBUTE_DEFAULT[attribute]
+                    states[member_id] = fill
+                else:
+                    states[member_id] = value
+
+            if drop_invariant and not _states_vary(states):
+                continue
+
+            features.append(Feature(
+                identifier=f"{reaction_id}_{attribute}",
+                name=reaction.name,
+                base_component=reaction,
+                component_attribute=attribute,
+                states=states,
+            ))
+
+        if not features:
+            if drop_invariant and len(member_ids) == 1:
+                raise ValueError(
+                    "`state_matrix` has only one member, so no column can "
+                    "vary across members and every column was dropped. Pass "
+                    "drop_invariant=False to build a single-member ensemble."
+                )
+            if drop_invariant:
+                raise ValueError(
+                    "No columns of `state_matrix` vary across members, so the "
+                    "ensemble would have no features. Check the matrix, or "
+                    "pass drop_invariant=False if constant features are "
+                    "intended."
+                )
+            raise ValueError(
+                "`state_matrix` produced no features."
+            )
+
+        return cls(
+            list_of_models=[model],
+            features=features,
+            identifier=identifier,
+            name=name,
+        )
+
     def _populate_members(self,list_of_models):
         for model in list_of_models:
             model_states = dict()
@@ -308,6 +584,92 @@ class Ensemble(Object):
 
             self.members += [member]
 
+    def _resolve_from_dictlist(self, requested, dictlist, kind):
+        """Resolve ids or objects to the objects held by one of our DictLists.
+
+        Accepts a single id/object or an iterable of them. Everything is
+        resolved by id, so passing an equivalent object from a copied ensemble
+        still returns this ensemble's object rather than the caller's.
+        """
+        if requested is None:
+            return list(dictlist)
+        if isinstance(requested, str) or not hasattr(requested, '__iter__'):
+            requested = [requested]
+        resolved = []
+        seen = set()
+        for item in requested:
+            item_id = item if isinstance(item, str) else item.id
+            # A repeated id is treated as a set-style subset rather than as a
+            # request for a duplicated row/column, which would produce a
+            # DataFrame with non-unique labels.
+            if item_id in seen:
+                continue
+            try:
+                resolved.append(dictlist.get_by_id(item_id))
+            except KeyError:
+                raise KeyError(
+                    f"'{item_id}' is not a {kind} of this ensemble."
+                ) from None
+            seen.add(item_id)
+        return resolved
+
+    def feature_state_matrix(self, *, features=None, members=None):
+        """Return the ensemble's states as a member x feature DataFrame.
+
+        This is the flat view of the ensemble's structure: one row per member,
+        one column per feature, each cell the value that
+        `set_state` would assign for that member/feature pair. It is the same
+        information held redundantly in `Feature.states` (keyed by member id)
+        and `Member.states` (keyed by Feature object), in the orientation most
+        analyses want.
+
+        Both axes are sorted. This matters for reproducibility rather than
+        cosmetics: `Ensemble._populate_features_base` iterates a Python `set`
+        of reaction ids when creating features, so `ensemble.features` comes
+        out in an order that is not stable across runs (or across processes,
+        given string hash randomization). Two ensembles built from identical
+        inputs can therefore hold identically-valued but differently-ordered
+        `features` DictLists. Sorting the columns here means callers can
+        compare, hash, or concatenate matrices without tripping over that.
+
+        Parameters
+        ----------
+        features : iterable of str or medusa.core.feature.Feature, optional
+            Restrict the columns to these features, given as feature ids or
+            Feature objects. A single id/object may be passed directly. When
+            None (the default), all features are included.
+        members : iterable of str or medusa.core.member.Member, optional
+            Restrict the rows to these members, given as member ids or Member
+            objects. A single id/object may be passed directly. When None (the
+            default), all members are included.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Index is member ids (sorted), columns are feature ids (sorted).
+            The dtype follows from the states themselves: numeric for bound
+            attributes, object for dict-valued attributes such as
+            'metabolites'.
+        """
+        feature_list = self._resolve_from_dictlist(
+            features, self.features, 'feature')
+        member_list = self._resolve_from_dictlist(
+            members, self.members, 'member')
+
+        member_ids = [member.id for member in member_list]
+        columns = {}
+        for feature in feature_list:
+            columns[feature.id] = pd.Series(
+                [feature.states[member_id] for member_id in member_ids],
+                index=member_ids, dtype=object)
+
+        matrix = pd.DataFrame(
+            columns, index=member_ids,
+            columns=[feature.id for feature in feature_list])
+        # infer_objects recovers numeric dtypes for scalar-valued attributes
+        # while leaving dict-valued ('metabolites') columns as object.
+        matrix = matrix.infer_objects()
+        return matrix.sort_index(axis=0).sort_index(axis=1)
 
     def set_state(self,member):
         """Set the state of the base model to represent a single member.
