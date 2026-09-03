@@ -6,6 +6,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `Ensemble.from_state_matrix`, building an ensemble from an explicit
+  member-by-feature DataFrame without requiring a `cobra.Model` per member. A
+  2-level MultiIndex of `(reaction_id, component_attribute)` on the columns
+  lets a single ensemble vary different attributes for different reactions,
+  which is the case the "composable ensemble constructors" backlog entry
+  identified as impossible: bounds and biomass coefficients varying together.
+- `Ensemble.feature_state_matrix`, the inverse view, returning the ensemble's
+  states as a member-by-feature DataFrame with both axes sorted so that
+  matrices from separately built ensembles can be compared or concatenated.
+- `medusa.stats`, a method-agnostic diagnostics module: `variable_features`,
+  `n_variable_features`, `diversity_curve`, `prediction_saturation_curve` and
+  `consensus_fraction`. These ask how much the members of an ensemble differ
+  from one another, structurally or in their predictions, without knowing how
+  the ensemble was generated.
+
 ### Fixed
 - `ensemble_fva` no longer transposes each member's minimum and maximum.
   cobrapy returns the columns ordered `["minimum", "maximum"]` and the result
